@@ -19,9 +19,11 @@
         .badge-spam{background:rgba(239,68,68,.2);color:var(--red)}
         .badge-ok{background:rgba(34,197,94,.2);color:var(--green)}
         .badge-rescued{background:rgba(168,85,247,.2);color:var(--purple)}
+        .badge-reported{background:rgba(245,158,11,.2);color:var(--orange)}
         .badge-account{background:rgba(255,255,255,0.07);color:var(--muted);font-family:monospace}
         .report{background:#111318;padding:1rem;border-radius:6px;font-family:monospace;font-size:.75rem;white-space:pre-wrap;max-height:400px;overflow-y:auto;color:var(--muted);border:1px solid var(--border)}
         .btn{display:inline-block;padding:.5rem 1.2rem;background:var(--blue);color:white;border:none;border-radius:4px;cursor:pointer;font-size:.85rem;margin-top:1rem}.btn:hover{opacity:.85}
+        .btn-orange{background:var(--orange);color:#000;font-weight:600}
         h2{font-size:1rem;color:var(--muted);margin:1.5rem 0 .8rem;font-weight:500}
     </style>
 </head>
@@ -33,6 +35,7 @@
         <a href="/emails?filter=spam{% if current_account %}&account={{ current_account }}{% endif %}">Spam filtrat ({{ count_spam }})</a>
         <a href="/emails?filter=ham{% if current_account %}&account={{ current_account }}{% endif %}">Legítims ({{ count_ham }})</a>
         <a href="/emails?filter=rescued{% if current_account %}&account={{ current_account }}{% endif %}">Rescatats ({{ count_rescued }})</a>
+        <a href="/emails?filter=reported{% if current_account %}&account={{ current_account }}{% endif %}">Reportats ({{ count_reported }})</a>
         <a href="/logs{% if current_account %}?account={{ current_account }}{% endif %}">Logs</a>
     </nav>
 
@@ -63,6 +66,8 @@
         <div class="detail-value">
             {% if email.status == 'rescued' %}
                 <span class="badge badge-rescued">Rescatat</span>
+            {% elif email.status == 'reported' %}
+                <span class="badge badge-reported">Reportat com a spam</span>
             {% elif email.is_spam %}
                 <span class="badge badge-spam">Spam</span>
             {% else %}
@@ -79,6 +84,12 @@
     <form method="POST" action="/rescue/{{ email.id }}">
         <button class="btn" onclick="return confirm('Segur? Es mourà de SpamFilter a INBOX del compte {{ email.account }} i s\'entrenarà com legítim.')">
             ✅ Rescatar aquest correu (moure a INBOX de {{ email.account }})
+        </button>
+    </form>
+    {% elif not email.is_spam and email.status == 'active' %}
+    <form method="POST" action="/report-spam/{{ email.id }}">
+        <button class="btn btn-orange" onclick="return confirm('Segur? Es mourà d\'INBOX a la carpeta de spam del compte {{ email.account }} i s\'entrenarà com a spam.')">
+            🚫 Reportar com a spam (moure a SpamFilter de {{ email.account }})
         </button>
     </form>
     {% endif %}

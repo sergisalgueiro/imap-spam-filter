@@ -19,20 +19,21 @@ Dissenyat específicament per funcionar 24/7 en dispositius de baix consum (com 
   * Moure automàticament els missatges brossa a una carpeta dedicada (`SpamFilter`) mitjançant `IMAP MOVE` o `COPY+EXPUNGE`.
 
 * **🔄 Entrenament Bayesià Bidireccional Automàtic**:
-  * **Detecció de falsos negatius**: Si un usuari mou manualment un correu a la seva carpeta `Spam`, el servei l'envia automàticament a Rspamd (`/learnspam`) per entrenar el filtre de tot el domini.
-  * **Rescat de falsos positius**: Si un correu es mou de la carpeta `SpamFilter` de tornada a l'`INBOX` (sigui des del client de correu o amb un clic des del Dashboard web), s'entrena automàticament com a legítim (`/learnham`).
+  * **Reportats (Falsos negatius)**: Si un correu s'ha colat a l'INBOX, l'usuari pot prémer "Reportar spam" al Dashboard o moure'l a la carpeta `Spam` del seu gestor de correu. El servei el mourà, n'actualitzarà l'estat i l'enviarà a Rspamd (`/learnspam`).
+  * **Rescatats (Falsos positius)**: Si un correu legítim acaba per error a `SpamFilter`, es pot prémer "Rescatar" des del Dashboard o retornar-lo a l'`INBOX` des del client de correu. S'entrenarà automàticament com a legítim (`/learnham`).
   * Registre intern a SQLite per evitar sobre-entrenar missatges duplicats.
 
 * **🖥️ Dashboard Web de Gestió (Port 8025)**:
   * Interfície web fosca, ràpida i adaptable a mòbil.
-  * Resum d'activitat global i desglossament per bústia d'usuari.
+  * Resum d'activitat global i desglossament per bústia d'usuari (Escanejats, Spam, Legítims, Rescatats, Reportats).
   * Gràfics d'historial dels últims 30 dies.
   * Llistat detallat de correus filtrats amb l'informe complet de símbols de Rspamd.
-  * Botó de **Rescat en 1 Clic**: connecta automàticament amb la bústia afectada, retorna el correu a la safata d'entrada i entrena el model com a ham.
+  * Botó de **Rescat en 1 Clic** i botó de **Reportar com a Spam en 1 Clic**: connecta per IMAP amb la bústia afectada, mou el missatge a la carpeta correcta i entrena el filtre bayesià.
 
 * **📈 Mètriques per a Prometheus & Grafana**:
   * Endpoint natiu `/metrics` compatible amb Prometheus.
   * Mètriques globals i desglossades amb etiquetes per compte (`imap_spam_account_scanned_total{account="..."}`).
+  * Inclou **Dashboard de Grafana llest per importar** (`grafana_dashboard.json`) amb gràfics temporals, ràtios d'error i taula per bústia.
   * Health check a `/api/health` per a monitors externs (ex: Blackbox Exporter).
 
 * **💾 Persistència Robusta a SQLite**:
@@ -173,11 +174,12 @@ sudo journalctl -u imap-spam-filter -f
 
 ### Mètriques exposades per Prometheus:
 ```text
-# Comptadors totals (compatibilitat Grafana existent)
+# Comptadors totals
 imap_spam_scanned_total 150
 imap_spam_spam_total 12
 imap_spam_ham_total 138
 imap_spam_rescued_total 1
+imap_spam_reported_total 2
 imap_spam_learned_total 20
 
 # Comptadors desglossats per bústia
@@ -185,7 +187,16 @@ imap_spam_account_scanned_total{account="usuari1@domini.cat"} 90
 imap_spam_account_scanned_total{account="usuari2@domini.cat"} 60
 imap_spam_account_spam_total{account="usuari1@domini.cat"} 8
 imap_spam_account_spam_total{account="usuari2@domini.cat"} 4
+imap_spam_account_rescued_total{account="usuari1@domini.cat"} 1
+imap_spam_account_reported_total{account="usuari1@domini.cat"} 2
 ```
+
+### 📊 Panell de Grafana:
+Al repositori s'inclou la plantilla oficial [`grafana_dashboard.json`](grafana_dashboard.json). Per utilitzar-la:
+1. Obre Grafana -> **Dashboards** -> **New** -> **Import**.
+2. Carrega el fitxer `grafana_dashboard.json` o copia'n el contingut JSON.
+3. Selecciona la teva font de dades de Prometheus i fes clic a **Import**.
+4. Disposaràs d'un dashboard complet amb selector de bústies, ràtios de spam i errors, gràfiques temporals de rescats/reports i taula per compte.
 
 ---
 

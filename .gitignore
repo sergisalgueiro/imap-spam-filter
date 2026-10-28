@@ -34,3 +34,7 @@ ehthumbs.db
 .vscode/
 *.swp
 *.swo
+
+# ── Configuracions locals d'Agent ──
+*.local.md
+AGENTS.local.md

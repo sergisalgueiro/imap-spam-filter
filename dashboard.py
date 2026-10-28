@@ -74,6 +74,7 @@ def inject_global_data():
         "count_spam": t.get("spam", 0),
         "count_ham": t.get("ham", 0),
         "count_rescued": t.get("rescued", 0),
+        "count_reported": t.get("reported", t.get("learned_spam", 0)),
     }
 
 
@@ -195,6 +196,90 @@ def rescue_email(eid):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/report-spam/<int:eid>", methods=["POST"])
+def report_spam(eid):
+    """Mou un email d'INBOX a la carpeta de spam del compte corresponent i entrena Rspamd com spam."""
+    em = db.get_email(eid)
+    if not em:
+        return jsonify({"error": "No trobat"}), 404
+
+    target_acc = em.get("account", "").strip()
+    accounts = load_accounts()
+    account_cfg = next((a for a in accounts if a["user"] == target_acc), None)
+
+    if not account_cfg and accounts:
+        account_cfg = accounts[0]
+
+    if not account_cfg:
+        return jsonify({"error": f"Credencials no trobades per al compte {target_acc}"}), 500
+
+    user = account_cfg["user"]
+    passwd = account_cfg["pass"]
+
+    try:
+        if IMAP_SSL:
+            c = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
+        else:
+            c = imaplib.IMAP4(IMAP_HOST, IMAP_PORT)
+
+        c.login(user, passwd)
+
+        dest_folder = FOLDER_SPAM_DEST
+        typ, _ = c.select(f'"{dest_folder}"')
+        if typ != "OK":
+            dest_folder = f"INBOX.{FOLDER_SPAM_DEST}"
+            typ, _ = c.select(f'"{dest_folder}"')
+            if typ != "OK":
+                dest_folder = FOLDER_SPAM_DEST
+                try:
+                    c.create(f'"{dest_folder}"')
+                except Exception:
+                    dest_folder = f"INBOX.{FOLDER_SPAM_DEST}"
+                    c.create(f'"{dest_folder}"')
+
+        # Buscar i extreure el correu des d'INBOX
+        c.select(f'"{FOLDER_INBOX}"')
+        uids = []
+        if em.get("uid"):
+            uids = [em["uid"]]
+        else:
+            typ, data = c.uid("search", None, f'HEADER Message-ID "{em["message_id"]}"')
+            if typ == "OK" and data[0]:
+                uids = [u.decode() if isinstance(u, bytes) else str(u) for u in data[0].split()]
+
+        if uids:
+            uid_str = uids[0]
+            typ, fetch_data = c.uid("fetch", uid_str, "(RFC822)")
+            if typ == "OK" and fetch_data and fetch_data[0]:
+                raw = fetch_data[0][1]
+                rspamd_learn(raw, spam=True, recipient=user)
+                db.mark_learned(em["message_id"], "spam", account=user)
+
+            # Moure a la carpeta de destinació d'spam
+            moved = False
+            try:
+                typ, _ = c.uid("move", uid_str, f'"{dest_folder}"')
+                if typ == "OK":
+                    moved = True
+            except Exception:
+                pass
+
+            if not moved:
+                c.uid("copy", uid_str, f'"{dest_folder}"')
+                c.uid("store", uid_str, "+FLAGS", "(\\Deleted)")
+                c.expunge()
+
+        c.logout()
+
+        db.update_status(em["message_id"], "reported", "reported_dashboard", account=user)
+        db.bump_stats(account=user, learned_spam=1)
+        db.event("INFO", f"Correu reportat com a spam i mogut a {dest_folder}: {em.get('subject', '')[:50]}", account=user)
+
+        return jsonify({"ok": True, "message": f"Email reportat com a spam i mogut a {dest_folder}"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/logs")
 def logs():
     acc = request.args.get("account", "").strip() or None
@@ -248,6 +333,7 @@ def prometheus_metrics():
     spam = t.get("spam", 0)
     ham = t.get("ham", 0)
     rescued = t.get("rescued", 0)
+    reported = t.get("reported", t.get("learned_spam", 0))
     learned_spam = t.get("learned_spam", 0)
     learned_ham = t.get("learned_ham", 0)
 
@@ -264,6 +350,9 @@ def prometheus_metrics():
         "# HELP imap_spam_rescued_total Total correus rescatats de la carpeta SpamFilter",
         "# TYPE imap_spam_rescued_total counter",
         f"imap_spam_rescued_total {rescued}",
+        "# HELP imap_spam_reported_total Total correus reportats com a spam manualment (falsos negatius)",
+        "# TYPE imap_spam_reported_total counter",
+        f"imap_spam_reported_total {reported}",
         "# HELP imap_spam_learned_total Total correus apresos pel filtre bayesia",
         "# TYPE imap_spam_learned_total counter",
         f"imap_spam_learned_total {learned_spam + learned_ham}",
@@ -293,6 +382,15 @@ def prometheus_metrics():
         lines.append("# HELP imap_spam_account_rescued_total Correus rescatats per bustia")
         lines.append("# TYPE imap_spam_account_rescued_total counter")
         for at in acc_totals:
+            acc_name = at["account"]
+            lines.append(f'imap_spam_account_rescued_total{{account="{acc_name}"}} {at["rescued"]}')
+
+        lines.append("# HELP imap_spam_account_reported_total Correus reportats com a spam manualment per bustia")
+        lines.append("# TYPE imap_spam_account_reported_total counter")
+        for at in acc_totals:
+            acc_name = at["account"]
+            rep_acc = at.get("reported", at.get("learned_spam", 0))
+            lines.append(f'imap_spam_account_reported_total{{account="{acc_name}"}} {rep_acc}')
             acc_name = at["account"]
             lines.append(f'imap_spam_account_rescued_total{{account="{acc_name}"}} {at["rescued"]}')
 

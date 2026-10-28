@@ -121,6 +121,7 @@
         .badge-spam { background: rgba(239,68,68,0.2); color: var(--red); }
         .badge-ok { background: rgba(34,197,94,0.2); color: var(--green); }
         .badge-rescued { background: rgba(168,85,247,0.2); color: var(--purple); }
+        .badge-reported { background: rgba(245,158,11,0.2); color: var(--orange); }
         .badge-account { background: rgba(255,255,255,0.07); color: var(--muted); font-family: monospace; }
 
         .score { font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 600; }
@@ -164,33 +165,38 @@
         <a href="/emails?filter=spam{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'spam' %}active{% endif %}">Spam filtrat ({{ count_spam }})</a>
         <a href="/emails?filter=ham{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'ham' %}active{% endif %}">Legítims ({{ count_ham }})</a>
         <a href="/emails?filter=rescued{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'rescued' %}active{% endif %}">Rescatats ({{ count_rescued }})</a>
+        <a href="/emails?filter=reported{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'reported' %}active{% endif %}">Reportats ({{ count_reported }})</a>
         <a href="/logs{% if current_account %}?account={{ current_account }}{% endif %}" class="{% if active_tab == 'logs' %}active{% endif %}">Logs</a>
     </nav>
 
     <div class="stats-grid">
         <div class="stat-card stat-blue">
-            <div class="stat-value">{{ totals.scanned }}</div>
+            <div class="stat-value">{{ totals.scanned or 0 }}</div>
             <div class="stat-label">Correus escanejats</div>
         </div>
         <div class="stat-card stat-red">
-            <div class="stat-value">{{ totals.spam }}</div>
+            <div class="stat-value">{{ totals.spam or 0 }}</div>
             <div class="stat-label">Spam filtrat</div>
         </div>
         <div class="stat-card stat-green">
-            <div class="stat-value">{{ totals.ham }}</div>
+            <div class="stat-value">{{ totals.ham or 0 }}</div>
             <div class="stat-label">Legítims</div>
         </div>
         <div class="stat-card stat-purple">
-            <div class="stat-value">{{ totals.rescued }}</div>
+            <div class="stat-value">{{ totals.rescued or 0 }}</div>
             <div class="stat-label">Rescatats</div>
         </div>
         <div class="stat-card stat-orange">
-            <div class="stat-value">{{ totals.learned_spam + totals.learned_ham }}</div>
+            <div class="stat-value">{{ totals.reported or totals.learned_spam or 0 }}</div>
+            <div class="stat-label">Reportats</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ (totals.learned_spam or 0) + (totals.learned_ham or 0) }}</div>
             <div class="stat-label">Entrenats (Bayes)</div>
         </div>
         <div class="stat-card">
             <div class="stat-value">
-                {% if totals.scanned > 0 %}
+                {% if totals.scanned and totals.scanned > 0 %}
                     {{ "%.1f"|format(totals.spam / totals.scanned * 100) }}%
                 {% else %}0%{% endif %}
             </div>
@@ -208,6 +214,7 @@
                 <th>Spam</th>
                 <th>Legítims</th>
                 <th>Rescatats</th>
+                <th>Reportats</th>
                 <th>Ratio Spam</th>
                 <th>Filtre</th>
             </tr>
@@ -220,6 +227,7 @@
                 <td><span style="color:var(--red)">{{ at.spam }}</span></td>
                 <td><span style="color:var(--green)">{{ at.ham }}</span></td>
                 <td><span style="color:var(--purple)">{{ at.rescued }}</span></td>
+                <td><span style="color:var(--orange)">{{ at.reported or at.learned_spam or 0 }}</span></td>
                 <td>
                     {% if at.scanned > 0 %}
                         {{ "%.1f"|format(at.spam / at.scanned * 100) }}%

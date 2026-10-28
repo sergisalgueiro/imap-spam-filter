@@ -394,6 +394,7 @@ class Database:
                            COALESCE(SUM(spam),0) as spam,
                            COALESCE(SUM(ham),0) as ham,
                            COALESCE(SUM(rescued),0) as rescued,
+                           COALESCE(SUM(learned_spam),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
                            COALESCE(SUM(learned_ham),0) as learned_ham
                     FROM daily_stats
@@ -405,6 +406,7 @@ class Database:
                            COALESCE(SUM(spam),0) as spam,
                            COALESCE(SUM(ham),0) as ham,
                            COALESCE(SUM(rescued),0) as rescued,
+                           COALESCE(SUM(learned_spam),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
                            COALESCE(SUM(learned_ham),0) as learned_ham
                     FROM daily_stats
@@ -422,6 +424,7 @@ class Database:
                        COALESCE(SUM(spam),0) as spam,
                        COALESCE(SUM(ham),0) as ham,
                        COALESCE(SUM(rescued),0) as rescued,
+                       COALESCE(SUM(learned_spam),0) as reported,
                        COALESCE(SUM(learned_spam),0) as learned_spam,
                        COALESCE(SUM(learned_ham),0) as learned_ham
                 FROM daily_stats
@@ -450,7 +453,8 @@ class Database:
         try:
             if account:
                 rows = c.execute("""
-                    SELECT date, scanned, spam, ham, rescued, learned_spam, learned_ham
+                    SELECT date, scanned, spam, ham, rescued,
+                           learned_spam as reported, learned_spam, learned_ham
                     FROM daily_stats
                     WHERE date >= ? AND account = ?
                     ORDER BY date
@@ -462,6 +466,7 @@ class Database:
                            COALESCE(SUM(spam),0) as spam,
                            COALESCE(SUM(ham),0) as ham,
                            COALESCE(SUM(rescued),0) as rescued,
+                           COALESCE(SUM(learned_spam),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
                            COALESCE(SUM(learned_ham),0) as learned_ham
                     FROM daily_stats
@@ -479,9 +484,11 @@ class Database:
         if filter_type == "spam":
             clauses.append("is_spam=1 AND status='active'")
         elif filter_type == "ham":
-            clauses.append("is_spam=0")
+            clauses.append("is_spam=0 AND status!='reported'")
         elif filter_type == "rescued":
             clauses.append("status='rescued'")
+        elif filter_type == "reported":
+            clauses.append("status='reported'")
 
         if account:
             clauses.append("account=?")
@@ -887,7 +894,22 @@ class AccountWorker(threading.Thread):
                                 self.db.mark_learned(info["message_id"], "spam", account=self.user)
                                 self.imap.uid("store", uid, "+FLAGS", "(\\Seen)")
                                 learned += 1
-                                logger.info(f"[{self.user}] 📚 Après SPAM ({folder}): {info['from'][:40]} | {info['subject'][:50]}")
+
+                                prev = self.db.get_email_by_msgid(self.user, info["message_id"])
+                                if prev:
+                                    self.db.update_status(info["message_id"], "reported", "reported_manually", account=self.user)
+                                else:
+                                    self.db.log_email(
+                                        account=self.user,
+                                        message_id=info["message_id"], uid=uid,
+                                        subject=info["subject"][:200], sender=info["from"][:200],
+                                        recipient=info["to"][:200], date_recv=info["date"],
+                                        date_scan=datetime.now().isoformat(),
+                                        score=0.0, threshold=SPAM_THRESHOLD, is_spam=0,
+                                        action="reported_manually", status="reported",
+                                        report="Après manualment des de la carpeta de brossa", size_bytes=info["size"],
+                                    )
+                                logger.info(f"[{self.user}] 📚 Après i reportat SPAM ({folder}): {info['from'][:40]} | {info['subject'][:50]}")
                     except Exception as e:
                         logger.error(f"[{self.user}] Error aprenent UID {uid} a {folder}: {e}")
             except Exception as e:
@@ -895,7 +917,7 @@ class AccountWorker(threading.Thread):
 
         if learned:
             self.db.bump_stats(account=self.user, learned_spam=learned)
-            self.db.event("INFO", f"Entrenament: {learned} correus apresos com a spam", account=self.user)
+            self.db.event("INFO", f"Reportats: {learned} correus apresos com a spam", account=self.user)
 
     def run(self):
         logger.info(f"[{self.user}] Fil de monitorització IMAP iniciat")
