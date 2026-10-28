@@ -19,12 +19,14 @@ import hashlib
 import logging
 import logging.handlers
 import threading
+import re
+import ipaddress
 import email
 import email.header
 import email.utils
 import imaplib
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 import requests
 try:
@@ -216,6 +218,7 @@ class Database:
                                 spam            INTEGER DEFAULT 0,
                                 ham             INTEGER DEFAULT 0,
                                 rescued         INTEGER DEFAULT 0,
+                                reported        INTEGER DEFAULT 0,
                                 learned_spam    INTEGER DEFAULT 0,
                                 learned_ham     INTEGER DEFAULT 0,
                                 PRIMARY KEY (date, account)
@@ -223,13 +226,25 @@ class Database:
                         """)
                         c.execute("""
                             INSERT INTO daily_stats_new
-                            (date, account, scanned, spam, ham, rescued, learned_spam, learned_ham)
-                            SELECT date, ?, scanned, spam, ham, rescued, learned_spam, learned_ham
+                            (date, account, scanned, spam, ham, rescued, reported, learned_spam, learned_ham)
+                            SELECT date, ?, scanned, spam, ham, rescued, 0, learned_spam, learned_ham
                             FROM daily_stats
                         """, (legacy_acc,))
                         c.execute("DROP TABLE daily_stats")
                         c.execute("ALTER TABLE daily_stats_new RENAME TO daily_stats")
                         logger.info("Migració de 'daily_stats' completada.")
+                    elif "reported" not in cols:
+                        c.execute("ALTER TABLE daily_stats ADD COLUMN reported INTEGER DEFAULT 0")
+                        c.execute("""
+                            UPDATE daily_stats
+                            SET reported = (
+                                SELECT COUNT(*)
+                                FROM emails
+                                WHERE emails.account = daily_stats.account
+                                  AND emails.status = 'reported'
+                            )
+                        """)
+                        logger.info("Columna 'reported' afegida i sincronitzada a 'daily_stats'.")
 
                 # Comprovació i addició de columna account a 'events' i 'learned_emails'
                 t_events = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
@@ -271,6 +286,7 @@ class Database:
                         spam            INTEGER DEFAULT 0,
                         ham             INTEGER DEFAULT 0,
                         rescued         INTEGER DEFAULT 0,
+                        reported        INTEGER DEFAULT 0,
                         learned_spam    INTEGER DEFAULT 0,
                         learned_ham     INTEGER DEFAULT 0,
                         PRIMARY KEY (date, account)
@@ -341,22 +357,23 @@ class Database:
             finally:
                 c.close()
 
-    def bump_stats(self, account: str = "", spam=0, ham=0, rescued=0, learned_spam=0, learned_ham=0):
+    def bump_stats(self, account: str = "", spam=0, ham=0, rescued=0, reported=0, learned_spam=0, learned_ham=0):
         today = datetime.now().strftime("%Y-%m-%d")
         with self.lock:
             c = self._conn()
             try:
                 c.execute("""
-                    INSERT INTO daily_stats (date, account, scanned, spam, ham, rescued, learned_spam, learned_ham)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO daily_stats (date, account, scanned, spam, ham, rescued, reported, learned_spam, learned_ham)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(date, account) DO UPDATE SET
                         scanned = scanned + excluded.scanned,
                         spam = spam + excluded.spam,
                         ham = ham + excluded.ham,
                         rescued = rescued + excluded.rescued,
+                        reported = reported + excluded.reported,
                         learned_spam = learned_spam + excluded.learned_spam,
                         learned_ham = learned_ham + excluded.learned_ham
-                """, (today, account, spam + ham, spam, ham, rescued, learned_spam, learned_ham))
+                """, (today, account, spam + ham, spam, ham, rescued, reported, learned_spam, learned_ham))
                 c.commit()
             finally:
                 c.close()
@@ -394,7 +411,7 @@ class Database:
                            COALESCE(SUM(spam),0) as spam,
                            COALESCE(SUM(ham),0) as ham,
                            COALESCE(SUM(rescued),0) as rescued,
-                           COALESCE(SUM(learned_spam),0) as reported,
+                           COALESCE(SUM(reported),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
                            COALESCE(SUM(learned_ham),0) as learned_ham
                     FROM daily_stats
@@ -406,7 +423,7 @@ class Database:
                            COALESCE(SUM(spam),0) as spam,
                            COALESCE(SUM(ham),0) as ham,
                            COALESCE(SUM(rescued),0) as rescued,
-                           COALESCE(SUM(learned_spam),0) as reported,
+                           COALESCE(SUM(reported),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
                            COALESCE(SUM(learned_ham),0) as learned_ham
                     FROM daily_stats
@@ -424,7 +441,7 @@ class Database:
                        COALESCE(SUM(spam),0) as spam,
                        COALESCE(SUM(ham),0) as ham,
                        COALESCE(SUM(rescued),0) as rescued,
-                       COALESCE(SUM(learned_spam),0) as reported,
+                       COALESCE(SUM(reported),0) as reported,
                        COALESCE(SUM(learned_spam),0) as learned_spam,
                        COALESCE(SUM(learned_ham),0) as learned_ham
                 FROM daily_stats
@@ -454,7 +471,7 @@ class Database:
             if account:
                 rows = c.execute("""
                     SELECT date, scanned, spam, ham, rescued,
-                           learned_spam as reported, learned_spam, learned_ham
+                           reported, learned_spam, learned_ham
                     FROM daily_stats
                     WHERE date >= ? AND account = ?
                     ORDER BY date
@@ -466,7 +483,7 @@ class Database:
                            COALESCE(SUM(spam),0) as spam,
                            COALESCE(SUM(ham),0) as ham,
                            COALESCE(SUM(rescued),0) as rescued,
-                           COALESCE(SUM(learned_spam),0) as reported,
+                           COALESCE(SUM(reported),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
                            COALESCE(SUM(learned_ham),0) as learned_ham
                     FROM daily_stats
@@ -566,14 +583,64 @@ def email_info(raw: bytes) -> dict:
 
 
 # ──────────────────────────────────────────────
-# Rspamd client
+# Rspamd client & Extracció de Context SMTP
 # ──────────────────────────────────────────────
+def extract_sender_context(raw: bytes) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extreu la IP pública del client remitent i el Return-Path / Envelope From
+    a partir del correu en brut i la cadena de capçaleres Received.
+    """
+    try:
+        msg = email.message_from_bytes(raw)
+
+        # 1. Envelope From / Return-Path
+        rp = msg.get("Return-Path", "")
+        from_hdr = msg.get("From", "")
+        env_from = email.utils.parseaddr(rp)[1] or email.utils.parseaddr(from_hdr)[1]
+        if not env_from:
+            env_from = None
+
+        # 2. IP d'origen a partir de les capçaleres Received
+        received = msg.get_all("Received", [])
+        client_ip = None
+        ip_regex = re.compile(r"\[([0-9a-fA-F:\.]+)\]")
+
+        for h in received:
+            matches = ip_regex.findall(h)
+            for m in matches:
+                clean_m = m.lower().replace("ipv6:", "").strip()
+                try:
+                    ip = ipaddress.ip_address(clean_m)
+                    if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                        continue
+                    h_lower = h.lower()
+                    if "entorno.es" in h_lower and ("from se01.entorno.es" in h_lower or ip == ipaddress.ip_address("194.36.122.200")):
+                        continue
+                    client_ip = str(ip)
+                    break
+                except ValueError:
+                    continue
+            if client_ip:
+                break
+
+        return client_ip, env_from
+    except Exception as e:
+        logger.warning(f"Error extraient context de xarxa de l'email: {e}")
+        return None, None
+
+
 def rspamd_check(raw: bytes, recipient: str = "") -> dict:
-    """Envia email a Rspamd i retorna score + report."""
+    """Envia email a Rspamd amb context SMTP real (IP i From) i retorna score + report."""
     headers = {"Pass": "all"}
     if recipient:
         headers["Deliver-To"] = recipient
         headers["Rcpt"] = recipient
+
+    client_ip, env_from = extract_sender_context(raw)
+    if client_ip:
+        headers["Ip"] = client_ip
+    if env_from:
+        headers["From"] = env_from
 
     try:
         r = requests.post(
@@ -593,10 +660,16 @@ def rspamd_check(raw: bytes, recipient: str = "") -> dict:
             if s != 0:
                 report_lines.append(f"{s:+6.1f}  {name}: {desc}")
         report = "\n".join(report_lines[:30])
-        return {"score": score, "is_spam": score >= SPAM_THRESHOLD, "report": report}
+        return {
+            "score": score,
+            "is_spam": score >= SPAM_THRESHOLD,
+            "report": report,
+            "client_ip": client_ip,
+            "env_from": env_from,
+        }
     except Exception as e:
         logger.error(f"Rspamd error: {e}")
-        return {"score": 0.0, "is_spam": False, "report": f"ERROR: {e}"}
+        return {"score": 0.0, "is_spam": False, "report": f"ERROR: {e}", "client_ip": None, "env_from": None}
 
 
 def rspamd_learn(raw: bytes, spam: bool, recipient: str = "") -> bool:
@@ -811,12 +884,13 @@ class AccountWorker(threading.Thread):
                     is_spam = result["is_spam"]
                     action = "kept_in_inbox"
 
+                    cip_str = f" [IP: {result.get('client_ip')}]" if result.get("client_ip") else ""
                     if is_spam:
                         if self._move_email(uid, self.dest_folder):
                             action = "moved_to_spam"
                             spam_n += 1
                             logger.info(
-                                f"[{self.user}] 🚫 SPAM [{result['score']:.1f}] "
+                                f"[{self.user}] 🚫 SPAM [{result['score']:.1f}]{cip_str} "
                                 f"De: {info['from'][:50]} | {info['subject'][:60]}"
                             )
                         else:
@@ -825,7 +899,7 @@ class AccountWorker(threading.Thread):
                     else:
                         ham_n += 1
                         logger.info(
-                            f"[{self.user}] ✅ OK [{result['score']:.1f}] "
+                            f"[{self.user}] ✅ OK [{result['score']:.1f}]{cip_str} "
                             f"De: {info['from'][:50]} | {info['subject'][:60]}"
                         )
 
@@ -859,6 +933,7 @@ class AccountWorker(threading.Thread):
         if not self.imap:
             return
         learned = 0
+        reported = 0
 
         for folder in self.manual_folders:
             try:
@@ -897,27 +972,27 @@ class AccountWorker(threading.Thread):
 
                                 prev = self.db.get_email_by_msgid(self.user, info["message_id"])
                                 if prev:
-                                    self.db.update_status(info["message_id"], "reported", "reported_manually", account=self.user)
+                                    if prev.get("is_spam") == 0:
+                                        # Era un correu legítim que el filtre no va detectar: FALS NEGATIU (Reportat)
+                                        self.db.update_status(info["message_id"], "reported", "reported_manually", account=self.user)
+                                        reported += 1
+                                        logger.info(f"[{self.user}] 📚 Fals negatiu reportat com a SPAM ({folder}): {info['from'][:40]} | {info['subject'][:50]}")
+                                    else:
+                                        logger.info(f"[{self.user}] 📚 Re-après SPAM existent ({folder}): {info['from'][:40]} | {info['subject'][:50]}")
                                 else:
-                                    self.db.log_email(
-                                        account=self.user,
-                                        message_id=info["message_id"], uid=uid,
-                                        subject=info["subject"][:200], sender=info["from"][:200],
-                                        recipient=info["to"][:200], date_recv=info["date"],
-                                        date_scan=datetime.now().isoformat(),
-                                        score=0.0, threshold=SPAM_THRESHOLD, is_spam=0,
-                                        action="reported_manually", status="reported",
-                                        report="Après manualment des de la carpeta de brossa", size_bytes=info["size"],
-                                    )
-                                logger.info(f"[{self.user}] 📚 Après i reportat SPAM ({folder}): {info['from'][:40]} | {info['subject'][:50]}")
+                                    # Correu històric (ex: des de Paperera/Spam per entrenar Bayes)
+                                    logger.info(f"[{self.user}] 📚 Entrenament SPAM històric ({folder}): {info['from'][:40]} | {info['subject'][:50]}")
                     except Exception as e:
                         logger.error(f"[{self.user}] Error aprenent UID {uid} a {folder}: {e}")
             except Exception as e:
                 logger.debug(f"[{self.user}] Carpeta {folder} no accessible: {e}")
 
-        if learned:
-            self.db.bump_stats(account=self.user, learned_spam=learned)
-            self.db.event("INFO", f"Reportats: {learned} correus apresos com a spam", account=self.user)
+        if learned or reported:
+            self.db.bump_stats(account=self.user, reported=reported, learned_spam=learned)
+            if reported:
+                self.db.event("INFO", f"Reportats: {reported} falsos negatius apresos com a spam", account=self.user)
+            if learned - reported > 0:
+                self.db.event("INFO", f"Entrenament Bayes: {learned - reported} correus històrics apresos com a spam", account=self.user)
 
     def run(self):
         logger.info(f"[{self.user}] Fil de monitorització IMAP iniciat")

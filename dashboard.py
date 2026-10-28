@@ -74,7 +74,7 @@ def inject_global_data():
         "count_spam": t.get("spam", 0),
         "count_ham": t.get("ham", 0),
         "count_rescued": t.get("rescued", 0),
-        "count_reported": t.get("reported", t.get("learned_spam", 0)),
+        "count_reported": t.get("reported", 0),
     }
 
 
@@ -272,7 +272,7 @@ def report_spam(eid):
         c.logout()
 
         db.update_status(em["message_id"], "reported", "reported_dashboard", account=user)
-        db.bump_stats(account=user, learned_spam=1)
+        db.bump_stats(account=user, reported=1, learned_spam=1)
         db.event("INFO", f"Correu reportat com a spam i mogut a {dest_folder}: {em.get('subject', '')[:50]}", account=user)
 
         return jsonify({"ok": True, "message": f"Email reportat com a spam i mogut a {dest_folder}"})
@@ -333,7 +333,7 @@ def prometheus_metrics():
     spam = t.get("spam", 0)
     ham = t.get("ham", 0)
     rescued = t.get("rescued", 0)
-    reported = t.get("reported", t.get("learned_spam", 0))
+    reported = t.get("reported", 0)
     learned_spam = t.get("learned_spam", 0)
     learned_ham = t.get("learned_ham", 0)
 
@@ -389,10 +389,8 @@ def prometheus_metrics():
         lines.append("# TYPE imap_spam_account_reported_total counter")
         for at in acc_totals:
             acc_name = at["account"]
-            rep_acc = at.get("reported", at.get("learned_spam", 0))
+            rep_acc = at.get("reported", 0)
             lines.append(f'imap_spam_account_reported_total{{account="{acc_name}"}} {rep_acc}')
-            acc_name = at["account"]
-            lines.append(f'imap_spam_account_rescued_total{{account="{acc_name}"}} {at["rescued"]}')
 
     return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
 
