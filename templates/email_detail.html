@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detall - IMAP Spam Filter</title>
+    <style>
+        :root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e1e4eb;--muted:#8b8fa3;--green:#22c55e;--red:#ef4444;--orange:#f59e0b;--blue:#3b82f6;--purple:#a855f7}
+        *{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:1.5rem}
+        h1{font-size:1.5rem;margin-bottom:1.5rem;display:flex;align-items:center;gap:0.5rem;}a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+        .nav{display:flex;gap:0.5rem;margin-bottom:1.5rem;border-bottom:1px solid var(--border);padding-bottom:.75rem;flex-wrap:wrap;}
+        .nav a{color:var(--muted);font-size:.9rem;padding:.4rem .8rem;border-radius:6px;border:1px solid transparent;transition:all 0.2s;}
+        .nav a:hover{color:var(--text);background:var(--border);text-decoration:none}
+        .nav a.active{color:#fff;background:rgba(59,130,246,0.2);border-color:var(--blue);text-decoration:none}
+        .detail-grid{display:grid;grid-template-columns:140px 1fr;gap:.5rem;background:var(--card);padding:1.5rem;border-radius:8px;border:1px solid var(--border);margin-bottom:1rem}
+        .detail-label{color:var(--muted);font-size:.85rem}.detail-value{font-size:.85rem;word-break:break-all}
+        .score{font-family:monospace;font-weight:600;font-size:1.3rem}.score-high{color:var(--red)}.score-med{color:var(--orange)}.score-low{color:var(--green)}
+        .badge{display:inline-block;padding:.15rem .5rem;border-radius:9999px;font-size:.7rem;font-weight:600}
+        .badge-spam{background:rgba(239,68,68,.2);color:var(--red)}
+        .badge-ok{background:rgba(34,197,94,.2);color:var(--green)}
+        .badge-rescued{background:rgba(168,85,247,.2);color:var(--purple)}
+        .badge-account{background:rgba(255,255,255,0.07);color:var(--muted);font-family:monospace}
+        .report{background:#111318;padding:1rem;border-radius:6px;font-family:monospace;font-size:.75rem;white-space:pre-wrap;max-height:400px;overflow-y:auto;color:var(--muted);border:1px solid var(--border)}
+        .btn{display:inline-block;padding:.5rem 1.2rem;background:var(--blue);color:white;border:none;border-radius:4px;cursor:pointer;font-size:.85rem;margin-top:1rem}.btn:hover{opacity:.85}
+        h2{font-size:1rem;color:var(--muted);margin:1.5rem 0 .8rem;font-weight:500}
+    </style>
+</head>
+<body>
+    <h1>🛡️ IMAP Spam Filter</h1>
+    <nav class="nav">
+        <a href="/{% if current_account %}?account={{ current_account }}{% endif %}">Dashboard</a>
+        <a href="/emails?filter=all{% if current_account %}&account={{ current_account }}{% endif %}">Tots els correus ({{ count_all }})</a>
+        <a href="/emails?filter=spam{% if current_account %}&account={{ current_account }}{% endif %}">Spam filtrat ({{ count_spam }})</a>
+        <a href="/emails?filter=ham{% if current_account %}&account={{ current_account }}{% endif %}">Legítims ({{ count_ham }})</a>
+        <a href="/emails?filter=rescued{% if current_account %}&account={{ current_account }}{% endif %}">Rescatats ({{ count_rescued }})</a>
+        <a href="/logs{% if current_account %}?account={{ current_account }}{% endif %}">Logs</a>
+    </nav>
+
+    <div class="detail-grid">
+        <div class="detail-label">Bústia / Compte</div>
+        <div class="detail-value">
+            <span class="badge badge-account">{{ email.account or 'Compte principal' }}</span>
+        </div>
+        <div class="detail-label">Assumpte</div>
+        <div class="detail-value"><strong>{{ email.subject }}</strong></div>
+        <div class="detail-label">De</div>
+        <div class="detail-value">{{ email.sender }}</div>
+        <div class="detail-label">Per a</div>
+        <div class="detail-value">{{ email.recipient }}</div>
+        <div class="detail-label">Data rebut</div>
+        <div class="detail-value">{{ email.date_recv }}</div>
+        <div class="detail-label">Data escanejat</div>
+        <div class="detail-value">{{ email.date_scan }}</div>
+        <div class="detail-label">Mida</div>
+        <div class="detail-value">{{ "%.1f"|format((email.size_bytes or 0) / 1024) }} KB</div>
+        <div class="detail-label">Puntuació</div>
+        <div class="detail-value">
+            <span class="score {% if (email.score or 0) >= 10 %}score-high{% elif (email.score or 0) >= 5 %}score-med{% else %}score-low{% endif %}">
+                {{ "%.1f"|format(email.score or 0.0) }} / {{ "%.1f"|format(email.threshold or 6.0) }}
+            </span>
+        </div>
+        <div class="detail-label">Veredicte</div>
+        <div class="detail-value">
+            {% if email.status == 'rescued' %}
+                <span class="badge badge-rescued">Rescatat</span>
+            {% elif email.is_spam %}
+                <span class="badge badge-spam">Spam</span>
+            {% else %}
+                <span class="badge badge-ok">Legítim</span>
+            {% endif %}
+        </div>
+        <div class="detail-label">Acció</div>
+        <div class="detail-value">{{ email.action }}</div>
+        <div class="detail-label">Message-ID</div>
+        <div class="detail-value" style="font-size:.7rem;color:var(--muted)">{{ email.message_id }}</div>
+    </div>
+
+    {% if email.is_spam and email.status == 'active' %}
+    <form method="POST" action="/rescue/{{ email.id }}">
+        <button class="btn" onclick="return confirm('Segur? Es mourà de SpamFilter a INBOX del compte {{ email.account }} i s\'entrenarà com legítim.')">
+            ✅ Rescatar aquest correu (moure a INBOX de {{ email.account }})
+        </button>
+    </form>
+    {% endif %}
+
+    <h2>📋 Informe Rspamd</h2>
+    <div class="report">{{ email.report or "Sense informe disponible" }}</div>
+</body>
+</html>

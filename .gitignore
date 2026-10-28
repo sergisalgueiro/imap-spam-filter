@@ -1,0 +1,36 @@
+# ── Fitxers de configuració amb credencials ──
+.env
+*.env
+!.env.example
+
+# ── Base de dades SQLite i registres ──
+data/
+*.db
+*.db-shm
+*.db-wal
+*.db.bak
+*.bak
+*.log
+
+# ── Entorns virtuals i memòria cau Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# ── Fitxers de sistema ──
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# ── Editors / IDE ──
+.idea/
+.vscode/
+*.swp
+*.swo

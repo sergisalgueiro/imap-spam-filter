@@ -1,0 +1,16 @@
+[Unit]
+Description=IMAP Spam Filter Bridge
+After=network-online.target rspamd.service
+Wants=rspamd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/imap-spam-filter
+Environment=ENV_FILE=/opt/imap-spam-filter/.env
+ExecStart=/usr/bin/python3 /opt/imap-spam-filter/imap_bridge.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

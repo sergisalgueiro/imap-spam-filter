@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs - IMAP Spam Filter</title>
+    <style>
+        :root{--bg:#0f1117;--card:#1a1d27;--border:#2a2d3a;--text:#e1e4eb;--muted:#8b8fa3;--green:#22c55e;--red:#ef4444;--orange:#f59e0b;--blue:#3b82f6}
+        *{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:1.5rem}
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+        h1{font-size:1.5rem;display:flex;align-items:center;gap:0.5rem;}a{color:var(--blue);text-decoration:none}a:hover{text-decoration:underline}
+
+        .account-selector {
+            display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+            background: var(--card); padding: 0.4rem 0.8rem; border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .account-label { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+        .account-pill {
+            padding: 0.25rem 0.65rem; border-radius: 9999px; font-size: 0.8rem;
+            color: var(--muted); background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border); transition: all 0.2s;
+        }
+        .account-pill:hover { color: var(--text); background: var(--border); text-decoration: none; }
+        .account-pill.active {
+            color: #fff; background: rgba(59, 130, 246, 0.25);
+            border-color: var(--blue); font-weight: 600; text-decoration: none;
+        }
+
+        .nav{display:flex;gap:0.5rem;margin-bottom:1.5rem;border-bottom:1px solid var(--border);padding-bottom:.75rem;flex-wrap:wrap;}
+        .nav a{color:var(--muted);font-size:.9rem;padding:.4rem .8rem;border-radius:6px;border:1px solid transparent;transition:all 0.2s;}
+        .nav a:hover{color:var(--text);background:var(--border);text-decoration:none}
+        .nav a.active{color:#fff;background:rgba(59,130,246,0.2);border-color:var(--blue);text-decoration:none}
+        table{width:100%;border-collapse:collapse;background:var(--card);border-radius:8px;overflow:hidden;border:1px solid var(--border)}
+        th{background:var(--border);color:var(--muted);font-weight:500;font-size:.8rem;text-align:left;padding:.7rem 1rem}
+        td{padding:.5rem 1rem;border-top:1px solid var(--border);font-size:.8rem;font-family:monospace}
+        tr:hover td{background:rgba(255,255,255,.03)}
+        .log-info{color:var(--blue)}.log-error{color:var(--red)}.log-warning{color:var(--orange)}.log-critical{color:var(--red);font-weight:700}
+        .badge-account{display:inline-block;padding:.1rem .4rem;border-radius:4px;font-size:.7rem;background:rgba(255,255,255,0.07);color:var(--muted)}
+        .empty{text-align:center;padding:3rem;color:var(--muted)}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ IMAP Spam Filter</h1>
+        <div class="account-selector">
+            <span class="account-label">Bústia:</span>
+            <a href="/logs" class="account-pill {% if not current_account %}active{% endif %}">Tots els logs</a>
+            {% for acc in accounts_list %}
+                <a href="/logs?account={{ acc }}" class="account-pill {% if current_account == acc %}active{% endif %}">{{ acc }}</a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <nav class="nav">
+        <a href="/{% if current_account %}?account={{ current_account }}{% endif %}" class="{% if active_tab == 'dashboard' %}active{% endif %}">Dashboard</a>
+        <a href="/emails?filter=all{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'all' %}active{% endif %}">Tots els correus ({{ count_all }})</a>
+        <a href="/emails?filter=spam{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'spam' %}active{% endif %}">Spam filtrat ({{ count_spam }})</a>
+        <a href="/emails?filter=ham{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'ham' %}active{% endif %}">Legítims ({{ count_ham }})</a>
+        <a href="/emails?filter=rescued{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'rescued' %}active{% endif %}">Rescatats ({{ count_rescued }})</a>
+        <a href="/logs{% if current_account %}?account={{ current_account }}{% endif %}" class="{% if active_tab == 'logs' %}active{% endif %}">Logs</a>
+    </nav>
+
+    {% if events %}
+    <table>
+        <thead>
+            <tr>
+                <th style="width:160px">Timestamp</th>
+                <th style="width:140px">Bústia</th>
+                <th style="width:70px">Nivell</th>
+                <th>Missatge</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in events %}
+            <tr>
+                <td>{{ e.ts[:19] }}</td>
+                <td>
+                    {% if e.account %}
+                        <span class="badge-account">{{ e.account }}</span>
+                    {% else %}
+                        <span style="color:var(--muted)">-</span>
+                    {% endif %}
+                </td>
+                <td class="log-{{ e.level|lower }}">{{ e.level }}</td>
+                <td>{{ e.message }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <div class="empty">Encara no hi ha events registrats</div>
+    {% endif %}
+
+    <script>setTimeout(() => location.reload(), 30000);</script>
+</body>
+</html>

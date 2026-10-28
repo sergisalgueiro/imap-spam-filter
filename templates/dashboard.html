@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛡️ IMAP Spam Filter</title>
+    <style>
+        :root {
+            --bg: #0f1117;
+            --card: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e1e4eb;
+            --muted: #8b8fa3;
+            --green: #22c55e;
+            --red: #ef4444;
+            --orange: #f59e0b;
+            --blue: #3b82f6;
+            --purple: #a855f7;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg); color: var(--text);
+            line-height: 1.6; padding: 1.5rem;
+        }
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;
+        }
+        h1 { font-size: 1.5rem; display: flex; align-items: center; gap: 0.5rem; }
+        h2 { font-size: 1.1rem; margin-bottom: 1rem; color: var(--muted); font-weight: 500; }
+        a { color: var(--blue); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        .account-selector {
+            display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+            background: var(--card); padding: 0.4rem 0.8rem; border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .account-label { font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+        .account-pill {
+            padding: 0.25rem 0.65rem; border-radius: 9999px; font-size: 0.8rem;
+            color: var(--muted); background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border); transition: all 0.2s;
+        }
+        .account-pill:hover { color: var(--text); background: var(--border); text-decoration: none; }
+        .account-pill.active {
+            color: #fff; background: rgba(59, 130, 246, 0.25);
+            border-color: var(--blue); font-weight: 600; text-decoration: none;
+        }
+
+        .nav {
+            display: flex; gap: 0.5rem; margin-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border); padding-bottom: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .nav a {
+            color: var(--muted); font-size: 0.9rem; padding: 0.4rem 0.8rem;
+            border-radius: 6px; transition: all 0.2s; border: 1px solid transparent;
+        }
+        .nav a:hover { color: var(--text); background: var(--border); text-decoration: none; }
+        .nav a.active { color: #fff; background: rgba(59, 130, 246, 0.2); border-color: var(--blue); text-decoration: none; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem; margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1.2rem; text-align: center;
+        }
+        .stat-value { font-size: 2rem; font-weight: 700; }
+        .stat-label { font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem; }
+        .stat-green .stat-value { color: var(--green); }
+        .stat-red .stat-value { color: var(--red); }
+        .stat-orange .stat-value { color: var(--orange); }
+        .stat-blue .stat-value { color: var(--blue); }
+        .stat-purple .stat-value { color: var(--purple); }
+
+        .section-box {
+            background: var(--card); border: 1px solid var(--border);
+            border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem;
+        }
+
+        .chart-container {
+            max-height: 280px; overflow: hidden;
+        }
+        .bar-chart {
+            display: flex; align-items: flex-end; gap: 3px;
+            height: 180px; padding-top: 1rem;
+        }
+        .bar-group {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; min-width: 0;
+        }
+        .bar-stack { display: flex; flex-direction: column-reverse; width: 100%; gap: 1px; }
+        .bar-spam { background: var(--red); border-radius: 2px 2px 0 0; min-height: 0; }
+        .bar-ham { background: var(--green); border-radius: 2px 2px 0 0; min-height: 0; opacity: 0.7; }
+        .bar-label {
+            font-size: 0.55rem; color: var(--muted); margin-top: 4px;
+            writing-mode: vertical-rl; transform: rotate(180deg); max-height: 50px;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%; border-collapse: collapse;
+            background: var(--card); border-radius: 8px;
+            overflow: hidden; border: 1px solid var(--border);
+            margin-bottom: 2rem;
+        }
+        th { background: var(--border); color: var(--muted); font-weight: 500;
+             font-size: 0.8rem; text-align: left; padding: 0.7rem 1rem; }
+        td { padding: 0.6rem 1rem; border-top: 1px solid var(--border); font-size: 0.85rem; }
+        tr:hover td { background: rgba(255,255,255,0.03); }
+
+        .badge {
+            display: inline-block; padding: 0.15rem 0.5rem;
+            border-radius: 9999px; font-size: 0.7rem; font-weight: 600;
+        }
+        .badge-spam { background: rgba(239,68,68,0.2); color: var(--red); }
+        .badge-ok { background: rgba(34,197,94,0.2); color: var(--green); }
+        .badge-rescued { background: rgba(168,85,247,0.2); color: var(--purple); }
+        .badge-account { background: rgba(255,255,255,0.07); color: var(--muted); font-family: monospace; }
+
+        .score { font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 600; }
+        .score-high { color: var(--red); }
+        .score-med { color: var(--orange); }
+        .score-low { color: var(--green); }
+
+        .btn {
+            display: inline-block; padding: 0.4rem 0.8rem;
+            background: var(--blue); color: white; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+            transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.85; }
+        .btn-sm { padding: 0.2rem 0.5rem; font-size: 0.7rem; }
+
+        .empty { text-align: center; padding: 2rem; color: var(--muted); }
+
+        @media (max-width: 600px) {
+            body { padding: 0.8rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            td, th { padding: 0.4rem 0.5rem; font-size: 0.75rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛡️ IMAP Spam Filter</h1>
+        <div class="account-selector">
+            <span class="account-label">Bústia:</span>
+            <a href="/" class="account-pill {% if not current_account %}active{% endif %}">Totes les bústies</a>
+            {% for acc in accounts_list %}
+                <a href="/?account={{ acc }}" class="account-pill {% if current_account == acc %}active{% endif %}">{{ acc }}</a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <nav class="nav">
+        <a href="/{% if current_account %}?account={{ current_account }}{% endif %}" class="{% if active_tab == 'dashboard' %}active{% endif %}">Dashboard</a>
+        <a href="/emails?filter=all{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'all' %}active{% endif %}">Tots els correus ({{ count_all }})</a>
+        <a href="/emails?filter=spam{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'spam' %}active{% endif %}">Spam filtrat ({{ count_spam }})</a>
+        <a href="/emails?filter=ham{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'ham' %}active{% endif %}">Legítims ({{ count_ham }})</a>
+        <a href="/emails?filter=rescued{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'rescued' %}active{% endif %}">Rescatats ({{ count_rescued }})</a>
+        <a href="/logs{% if current_account %}?account={{ current_account }}{% endif %}" class="{% if active_tab == 'logs' %}active{% endif %}">Logs</a>
+    </nav>
+
+    <div class="stats-grid">
+        <div class="stat-card stat-blue">
+            <div class="stat-value">{{ totals.scanned }}</div>
+            <div class="stat-label">Correus escanejats</div>
+        </div>
+        <div class="stat-card stat-red">
+            <div class="stat-value">{{ totals.spam }}</div>
+            <div class="stat-label">Spam filtrat</div>
+        </div>
+        <div class="stat-card stat-green">
+            <div class="stat-value">{{ totals.ham }}</div>
+            <div class="stat-label">Legítims</div>
+        </div>
+        <div class="stat-card stat-purple">
+            <div class="stat-value">{{ totals.rescued }}</div>
+            <div class="stat-label">Rescatats</div>
+        </div>
+        <div class="stat-card stat-orange">
+            <div class="stat-value">{{ totals.learned_spam + totals.learned_ham }}</div>
+            <div class="stat-label">Entrenats (Bayes)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">
+                {% if totals.scanned > 0 %}
+                    {{ "%.1f"|format(totals.spam / totals.scanned * 100) }}%
+                {% else %}0%{% endif %}
+            </div>
+            <div class="stat-label">Ratio spam</div>
+        </div>
+    </div>
+
+    {% if not current_account and account_totals %}
+    <h2>📬 Resum per Bústia</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Compte</th>
+                <th>Escanejats</th>
+                <th>Spam</th>
+                <th>Legítims</th>
+                <th>Rescatats</th>
+                <th>Ratio Spam</th>
+                <th>Filtre</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for at in account_totals %}
+            <tr>
+                <td><strong>{{ at.account }}</strong></td>
+                <td>{{ at.scanned }}</td>
+                <td><span style="color:var(--red)">{{ at.spam }}</span></td>
+                <td><span style="color:var(--green)">{{ at.ham }}</span></td>
+                <td><span style="color:var(--purple)">{{ at.rescued }}</span></td>
+                <td>
+                    {% if at.scanned > 0 %}
+                        {{ "%.1f"|format(at.spam / at.scanned * 100) }}%
+                    {% else %}0%{% endif %}
+                </td>
+                <td>
+                    <a href="/?account={{ at.account }}" class="btn btn-sm">Veure detalls</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <div class="section-box chart-container">
+        <h2>📊 Últims 30 dies {% if current_account %}({{ current_account }}){% endif %}</h2>
+        <div class="bar-chart">
+            {% set max_val = [] %}
+            {% for d in daily %}
+                {% if d.scanned > (max_val[0] if max_val else 0) %}
+                    {% if max_val %}{% set _ = max_val.pop() %}{% endif %}
+                    {% set _ = max_val.append(d.scanned) %}
+                {% endif %}
+            {% endfor %}
+            {% set max_h = max_val[0] if max_val else 1 %}
+            {% for d in daily %}
+                <div class="bar-group">
+                    <div class="bar-stack" style="height: 160px;">
+                        <div class="bar-spam" style="height: {{ (d.spam / max_h * 160) if max_h else 0 }}px;"
+                             title="{{ d.spam }} spam"></div>
+                        <div class="bar-ham" style="height: {{ (d.ham / max_h * 160) if max_h else 0 }}px;"
+                             title="{{ d.ham }} legítims"></div>
+                    </div>
+                    <div class="bar-label">{{ d.date[5:] }}</div>
+                </div>
+            {% endfor %}
+            {% if not daily %}
+                <div class="empty">Encara no hi ha dades per a aquest període</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <h2>🚫 Últims spam filtrats {% if current_account %}({{ current_account }}){% endif %}</h2>
+    {% if recent_spam %}
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Bústia</th>
+                <th>De</th>
+                <th>Assumpte</th>
+                <th>Score</th>
+                <th>Acció</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in recent_spam %}
+            <tr>
+                <td>{{ (e.date_scan or '')[:16] }}</td>
+                <td><span class="badge badge-account">{{ e.account }}</span></td>
+                <td>{{ (e.sender or '')[:35] }}</td>
+                <td><a href="/email/{{ e.id }}">{{ (e.subject or '(sense assumpte)')[:55] }}</a></td>
+                <td>
+                    <span class="score {% if (e.score or 0) >= 10 %}score-high{% elif (e.score or 0) >= 5 %}score-med{% else %}score-low{% endif %}">
+                        {{ "%.1f"|format(e.score or 0.0) }}
+                    </span>
+                </td>
+                <td>
+                    {% if e.status == 'rescued' %}
+                        <span class="badge badge-rescued">Rescatat</span>
+                    {% else %}
+                        <form method="POST" action="/rescue/{{ e.id }}" style="display:inline;">
+                            <button class="btn btn-sm">Rescatar</button>
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+        <div class="empty">Encara no s'ha filtrat cap spam 🎉</div>
+    {% endif %}
+
+    <script>
+    setTimeout(() => location.reload(), 60000);
+    document.querySelectorAll('form[action^="/rescue/"]').forEach(f => {
+        f.addEventListener('submit', async e => {
+            e.preventDefault();
+            if (!confirm('Rescatar aquest correu i moure\'l a INBOX de la bústia corresponent?')) return;
+            const btn = f.querySelector('button');
+            btn.textContent = '...';
+            try {
+                const r = await fetch(f.action, {method:'POST'});
+                const d = await r.json();
+                if (d.ok) { btn.outerHTML = '<span class="badge badge-rescued">Rescatat ✓</span>'; }
+                else { alert(d.error); btn.textContent = 'Rescatar'; }
+            } catch(err) { alert(err); btn.textContent = 'Rescatar'; }
+        });
+    });
+    </script>
+</body>
+</html>
