@@ -165,7 +165,7 @@ def rescue_email(eid):
 
         if uids:
             uid_str = uids[0]
-            typ, fetch_data = c.uid("fetch", uid_str, "(RFC822)")
+            typ, fetch_data = c.uid("fetch", uid_str, "(BODY.PEEK[])")
             if typ == "OK" and fetch_data and fetch_data[0]:
                 raw = fetch_data[0][1]
                 rspamd_learn(raw, spam=False, recipient=user)
@@ -249,7 +249,7 @@ def report_spam(eid):
 
         if uids:
             uid_str = uids[0]
-            typ, fetch_data = c.uid("fetch", uid_str, "(RFC822)")
+            typ, fetch_data = c.uid("fetch", uid_str, "(BODY.PEEK[])")
             if typ == "OK" and fetch_data and fetch_data[0]:
                 raw = fetch_data[0][1]
                 rspamd_learn(raw, spam=True, recipient=user)

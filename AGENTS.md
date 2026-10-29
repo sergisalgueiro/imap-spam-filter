@@ -43,4 +43,7 @@ Aquest fitxer conté les directrius i l'arquitectura del projecte per a assisten
 3. **Control de canvis i Git**:
    * No commetre fitxers amb credencials (`.env`, `*.db`).
    * Mai fer `git push` sense la confirmació explícita de l'usuari.
+4. **Privadesa i Confidencialitat de Dades**:
+   * **Prohibició estricta de lectura de contingut d'emails**: Cap agent d'IA no ha d'inspeccionar, extreure, bolcar a consola ni emmagatzemar mai el cos (*body*), text pla/HTML ni fitxers adjunts dels correus (ja sigui mitjançant comandes IMAP FETCH `RFC822`/`BODY[]`, scripts temporals o consultes a l'API).
+   * L'agent només té permès treballar amb metadades tècniques imprescindibles per al filtre (Message-ID, puntuacions i símbols de Rspamd, adreces d'origen/destí i assumpte).
 

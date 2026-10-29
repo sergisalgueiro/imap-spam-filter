@@ -842,7 +842,7 @@ class AccountWorker(threading.Thread):
                     break
                 uid = uid_bytes.decode() if isinstance(uid_bytes, bytes) else str(uid_bytes)
                 try:
-                    typ, fetch_data = self.imap.uid("fetch", uid, "(RFC822)")
+                    typ, fetch_data = self.imap.uid("fetch", uid, "(BODY.PEEK[])")
                     if typ != "OK" or not fetch_data or not fetch_data[0]:
                         continue
 
@@ -954,7 +954,7 @@ class AccountWorker(threading.Thread):
                         break
                     uid = uid_bytes.decode() if isinstance(uid_bytes, bytes) else str(uid_bytes)
                     try:
-                        typ, fetch_data = self.imap.uid("fetch", uid, "(RFC822)")
+                        typ, fetch_data = self.imap.uid("fetch", uid, "(BODY.PEEK[])")
                         if typ == "OK" and fetch_data and fetch_data[0]:
                             raw = fetch_data[0][1]
                             if not isinstance(raw, bytes):
