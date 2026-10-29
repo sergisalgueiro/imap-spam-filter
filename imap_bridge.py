@@ -331,6 +331,47 @@ class Database:
             finally:
                 c.close()
 
+    def get_active_spams(self, account: str, limit: int = 50) -> List[dict]:
+        c = self._conn()
+        try:
+            rows = c.execute("""
+                SELECT id, account, message_id, subject, uid
+                FROM emails
+                WHERE account = ? AND is_spam = 1 AND status = 'active'
+                ORDER BY id DESC
+                LIMIT ?
+            """, (account, limit)).fetchall()
+            return [dict(r) for r in rows]
+        finally:
+            c.close()
+
+    def get_counts(self, account: Optional[str] = None) -> dict:
+        c = self._conn()
+        try:
+            where = "WHERE account = ?" if account else ""
+            params = (account,) if account else ()
+            r = c.execute(f"""
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN is_spam=1 AND status='active' THEN 1 END) as spam,
+                    COUNT(CASE WHEN is_spam=0 AND status!='reported' THEN 1 END) as ham,
+                    COUNT(CASE WHEN status='rescued' THEN 1 END) as rescued,
+                    COUNT(CASE WHEN status='reported' THEN 1 END) as reported
+                FROM emails
+                {where}
+            """, params).fetchone()
+            if r:
+                return {
+                    "all": r["total"],
+                    "spam": r["spam"],
+                    "ham": r["ham"],
+                    "rescued": r["rescued"],
+                    "reported": r["reported"],
+                }
+            return {"all": 0, "spam": 0, "ham": 0, "rescued": 0, "reported": 0}
+        finally:
+            c.close()
+
     def get_email_by_msgid(self, account: str, message_id: str) -> Optional[dict]:
         c = self._conn()
         try:
@@ -858,11 +899,16 @@ class AccountWorker(threading.Thread):
                         # Si l'usuari l'ha mogut de SpamFilter a INBOX manualment
                         if prev["is_spam"] == 1 and prev["status"] == "active":
                             logger.info(f"[{self.user}] 🔄 Rescat manual detectat a l'INBOX: {info['subject'][:50]}")
-                            if rspamd_learn(raw, spam=False, recipient=self.user):
+                            rspamd_learned = False
+                            try:
+                                rspamd_learned = rspamd_learn(raw, spam=False, recipient=self.user)
+                            except Exception as e:
+                                logger.error(f"[{self.user}] Error aprenent ham a Rspamd: {e}")
+                            if rspamd_learned:
                                 self.db.mark_learned(info["message_id"], "ham", account=self.user)
-                                self.db.update_status(info["message_id"], "rescued", "rescued_manually", account=self.user)
-                                self.db.bump_stats(account=self.user, rescued=1, learned_ham=1)
-                                self.db.event("INFO", f"Rescatat manualment a l'INBOX: {info['subject'][:50]}", account=self.user)
+                            self.db.update_status(info["message_id"], "rescued", "rescued_manually", account=self.user)
+                            self.db.bump_stats(account=self.user, rescued=1, learned_ham=(1 if rspamd_learned else 0))
+                            self.db.event("INFO", f"Rescatat manualment a l'INBOX: {info['subject'][:50]}", account=self.user)
                         continue
 
                     if len(raw) > MAX_EMAIL_SIZE:
@@ -927,6 +973,69 @@ class AccountWorker(threading.Thread):
         except Exception as e:
             logger.error(f"[{self.user}] Error a _scan_inbox: {e}")
             return 0
+
+    def _check_manual_rescues(self):
+        """Detecta correus que estaven a SpamFilter i l'usuari ha mogut manualment a INBOX."""
+        if not self.imap:
+            return
+
+        try:
+            active_spams = self.db.get_active_spams(account=self.user, limit=50)
+            if not active_spams:
+                return
+
+            typ, _ = self.imap.select(f'"{FOLDER_INBOX}"')
+            if typ != "OK":
+                return
+
+            for em in active_spams:
+                if self.stop_event.is_set():
+                    break
+                msgid = em.get("message_id")
+                if not msgid:
+                    continue
+
+                try:
+                    clean_msgid = msgid.replace('\\', '\\\\').replace('"', '\\"')
+                    typ, data = self.imap.uid("search", None, f'HEADER Message-ID "{clean_msgid}"')
+                    if (typ != "OK" or not data or not data[0]) and ("<" in clean_msgid or ">" in clean_msgid):
+                        bare = clean_msgid.strip("<>")
+                        typ, data = self.imap.uid("search", None, f'HEADER Message-ID "{bare}"')
+
+                    if typ != "OK" or not data or not data[0]:
+                        continue
+
+                    # El correu s'ha trobat a l'INBOX!
+                    uids = data[0].split()
+                    target_uid = uids[-1].decode() if isinstance(uids[-1], bytes) else str(uids[-1])
+
+                    raw = None
+                    try:
+                        typ_f, fetch_data = self.imap.uid("fetch", target_uid, "(BODY.PEEK[])")
+                        if typ_f == "OK" and fetch_data and fetch_data[0]:
+                            raw = fetch_data[0][1]
+                    except Exception as e:
+                        logger.error(f"[{self.user}] Error obtenint contingut UID {target_uid}: {e}")
+
+                    rspamd_learned = False
+                    if isinstance(raw, bytes):
+                        try:
+                            rspamd_learned = rspamd_learn(raw, spam=False, recipient=self.user)
+                        except Exception as e:
+                            logger.error(f"[{self.user}] Error aprenent ham a Rspamd per a {msgid}: {e}")
+
+                    if rspamd_learned:
+                        self.db.mark_learned(msgid, "ham", account=self.user)
+
+                    self.db.update_status(msgid, "rescued", "rescued_manually", account=self.user)
+                    self.db.bump_stats(account=self.user, rescued=1, learned_ham=(1 if rspamd_learned else 0))
+                    self.db.event("INFO", f"Rescatat manualment a l'INBOX: {em.get('subject', '')[:50]}", account=self.user)
+                    logger.info(f"[{self.user}] 🔄 Rescat manual detectat a l'INBOX: {em.get('subject', '')[:50]}")
+                except Exception as e:
+                    logger.error(f"[{self.user}] Error comprovant rescat per a {msgid}: {e}")
+
+        except Exception as e:
+            logger.error(f"[{self.user}] Error a _check_manual_rescues: {e}")
 
     def _learn_from_manual_spam(self):
         """Aprèn dels correus que l'usuari mou manualment a carpetes de Spam."""
@@ -1005,11 +1114,13 @@ class AccountWorker(threading.Thread):
                     break
 
                 self._scan_inbox()
+                self._check_manual_rescues()
 
                 # Entrenament bayesià periòdic
                 now = time.time()
                 if now - last_learn > LEARN_INTERVAL:
                     self._learn_from_manual_spam()
+                    self._check_manual_rescues()
                     last_learn = now
 
                 # IMAP IDLE

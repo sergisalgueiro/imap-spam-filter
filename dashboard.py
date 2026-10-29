@@ -66,15 +66,15 @@ db = Database(DB_PATH)
 def inject_global_data():
     acc = request.args.get("account", "").strip() or None
     accounts = db.get_configured_or_seen_accounts()
-    t = db.get_totals(account=acc)
+    counts = db.get_counts(account=acc)
     return {
         "current_account": acc or "",
         "accounts_list": accounts,
-        "count_all": t.get("scanned", 0),
-        "count_spam": t.get("spam", 0),
-        "count_ham": t.get("ham", 0),
-        "count_rescued": t.get("rescued", 0),
-        "count_reported": t.get("reported", 0),
+        "count_all": counts["all"],
+        "count_spam": counts["spam"],
+        "count_ham": counts["ham"],
+        "count_rescued": counts["rescued"],
+        "count_reported": counts["reported"],
     }
 
 
@@ -156,12 +156,17 @@ def rescue_email(eid):
             c.select(f'"{dest_folder}"')
 
         uids = []
-        if em.get("uid"):
-            uids = [em["uid"]]
-        else:
-            typ, data = c.uid("search", None, f'HEADER Message-ID "{em["message_id"]}"')
-            if typ == "OK" and data[0]:
+        clean_msgid = (em.get("message_id") or "").replace('\\', '\\\\').replace('"', '\\"')
+        if clean_msgid:
+            typ, data = c.uid("search", None, f'HEADER Message-ID "{clean_msgid}"')
+            if (typ != "OK" or not data or not data[0]) and ("<" in clean_msgid or ">" in clean_msgid):
+                bare = clean_msgid.strip("<>")
+                typ, data = c.uid("search", None, f'HEADER Message-ID "{bare}"')
+            if typ == "OK" and data and data[0]:
                 uids = [u.decode() if isinstance(u, bytes) else str(u) for u in data[0].split()]
+
+        if not uids and em.get("uid"):
+            uids = [em["uid"]]
 
         if uids:
             uid_str = uids[0]
@@ -240,12 +245,17 @@ def report_spam(eid):
         # Buscar i extreure el correu des d'INBOX
         c.select(f'"{FOLDER_INBOX}"')
         uids = []
-        if em.get("uid"):
-            uids = [em["uid"]]
-        else:
-            typ, data = c.uid("search", None, f'HEADER Message-ID "{em["message_id"]}"')
-            if typ == "OK" and data[0]:
+        clean_msgid = (em.get("message_id") or "").replace('\\', '\\\\').replace('"', '\\"')
+        if clean_msgid:
+            typ, data = c.uid("search", None, f'HEADER Message-ID "{clean_msgid}"')
+            if (typ != "OK" or not data or not data[0]) and ("<" in clean_msgid or ">" in clean_msgid):
+                bare = clean_msgid.strip("<>")
+                typ, data = c.uid("search", None, f'HEADER Message-ID "{bare}"')
+            if typ == "OK" and data and data[0]:
                 uids = [u.decode() if isinstance(u, bytes) else str(u) for u in data[0].split()]
+
+        if not uids and em.get("uid"):
+            uids = [em["uid"]]
 
         if uids:
             uid_str = uids[0]
