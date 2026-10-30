@@ -104,6 +104,8 @@ IDLE_TIMEOUT = int(os.environ.get("IDLE_TIMEOUT", "1740"))  # 29 min
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "30"))
 LEARN_INTERVAL = int(os.environ.get("LEARN_INTERVAL", "3600"))  # 1 hora
 MAX_EMAIL_SIZE = int(os.environ.get("MAX_EMAIL_SIZE", "524288"))  # 512KB
+SPAM_RETENTION_DAYS = int(os.environ.get("SPAM_RETENTION_DAYS", "30"))  # Retenció a SpamFilter en dies (0 per desactivar)
+RETENTION_CHECK_INTERVAL = int(os.environ.get("RETENTION_CHECK_INTERVAL", "86400"))  # Interval de comprovació (1 dia = 86400s)
 
 
 def load_accounts() -> List[Dict[str, str]]:
@@ -353,7 +355,7 @@ class Database:
             r = c.execute(f"""
                 SELECT 
                     COUNT(*) as total,
-                    COUNT(CASE WHEN is_spam=1 AND status='active' THEN 1 END) as spam,
+                    COUNT(CASE WHEN is_spam=1 AND status IN ('active', 'purged') THEN 1 END) as spam,
                     COUNT(CASE WHEN is_spam=0 AND status!='reported' THEN 1 END) as ham,
                     COUNT(CASE WHEN status='rescued' THEN 1 END) as rescued,
                     COUNT(CASE WHEN status='reported' THEN 1 END) as reported
@@ -443,6 +445,45 @@ class Database:
             finally:
                 c.close()
 
+    def mark_spam_purged(self, account: str, cutoff_iso: str) -> int:
+        """Marca a la base de dades com a purgats els correus de spam més antics que cutoff_iso."""
+        with self.lock:
+            c = self._conn()
+            try:
+                cur = c.execute("""
+                    UPDATE emails
+                    SET status = 'purged', action = 'purged_retention'
+                    WHERE account = ?
+                      AND status NOT IN ('rescued', 'purged')
+                      AND is_spam = 1
+                      AND date_scan < ?
+                """, (account, cutoff_iso))
+                c.commit()
+                return cur.rowcount
+            finally:
+                c.close()
+
+    def get_purged_count(self, account: Optional[str] = None) -> int:
+        """Retorna el nombre total de correus purgats per retenció."""
+        c = self._conn()
+        try:
+            if account:
+                r = c.execute("SELECT COUNT(*) FROM emails WHERE status='purged' AND account=?", (account,)).fetchone()
+            else:
+                r = c.execute("SELECT COUNT(*) FROM emails WHERE status='purged'").fetchone()
+            return r[0] if r else 0
+        finally:
+            c.close()
+
+    def get_purged_by_account(self) -> Dict[str, int]:
+        """Retorna els correus purgats agrupats per compte."""
+        c = self._conn()
+        try:
+            rows = c.execute("SELECT account, COUNT(*) FROM emails WHERE status='purged' AND account != '' GROUP BY account").fetchall()
+            return {r[0]: r[1] for r in rows}
+        finally:
+            c.close()
+
     def get_totals(self, account: Optional[str] = None) -> dict:
         c = self._conn()
         try:
@@ -469,7 +510,9 @@ class Database:
                            COALESCE(SUM(learned_ham),0) as learned_ham
                     FROM daily_stats
                 """).fetchone()
-            return dict(r) if r else {}
+            d = dict(r) if r else {}
+            d["purged"] = self.get_purged_count(account=account)
+            return d
         finally:
             c.close()
 
@@ -490,7 +533,13 @@ class Database:
                 GROUP BY account
                 ORDER BY account
             """).fetchall()
-            return [dict(r) for r in rows]
+            purged_by_acc = self.get_purged_by_account()
+            result = []
+            for r in rows:
+                d = dict(r)
+                d["purged"] = purged_by_acc.get(d["account"], 0)
+                result.append(d)
+            return result
         finally:
             c.close()
 
@@ -540,13 +589,15 @@ class Database:
         clauses = []
         params = []
         if filter_type == "spam":
-            clauses.append("is_spam=1 AND status='active'")
+            clauses.append("is_spam=1 AND status IN ('active', 'purged')")
         elif filter_type == "ham":
             clauses.append("is_spam=0 AND status!='reported'")
         elif filter_type == "rescued":
             clauses.append("status='rescued'")
         elif filter_type == "reported":
             clauses.append("status='reported'")
+        elif filter_type == "purged":
+            clauses.append("status='purged'")
 
         if account:
             clauses.append("account=?")
@@ -1103,9 +1154,63 @@ class AccountWorker(threading.Thread):
             if learned - reported > 0:
                 self.db.event("INFO", f"Entrenament Bayes: {learned - reported} correus històrics apresos com a spam", account=self.user)
 
+    def _purge_expired_spam(self):
+        """Elimina els correus de la carpeta de spam amb una antiguitat superior a SPAM_RETENTION_DAYS."""
+        if not self.imap or SPAM_RETENTION_DAYS <= 0:
+            return
+
+        try:
+            cutoff_dt = datetime.now() - timedelta(days=SPAM_RETENTION_DAYS)
+            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            imap_date = f"{cutoff_dt.day:02d}-{months[cutoff_dt.month - 1]}-{cutoff_dt.year}"
+
+            target_folder = self.dest_folder
+            typ, _ = self.imap.select(f'"{target_folder}"')
+            if typ != "OK":
+                alt = f"INBOX.{target_folder}" if not target_folder.startswith("INBOX.") else target_folder.replace("INBOX.", "", 1)
+                typ, _ = self.imap.select(f'"{alt}"')
+                if typ == "OK":
+                    target_folder = alt
+                else:
+                    logger.warning(f"[{self.user}] 🧹 No s'ha pogut seleccionar la carpeta de spam '{target_folder}' per a la purga")
+                    return
+
+            typ, data = self.imap.uid("search", None, f"BEFORE {imap_date}")
+            if typ != "OK" or not data or not data[0]:
+                logger.debug(f"[{self.user}] 🧹 Retenció ({SPAM_RETENTION_DAYS}d): cap correu anterior a {imap_date} a '{target_folder}'")
+                return
+
+            uids = data[0].split()
+            count = len(uids)
+            if count == 0:
+                return
+
+            logger.info(f"[{self.user}] 🧹 Retenció ({SPAM_RETENTION_DAYS} dies): eliminant {count} correu(s) anterior(s) a {imap_date} a '{target_folder}'...")
+
+            # Marcar com a eliminats en blocs de 50
+            batch_size = 50
+            for i in range(0, count, batch_size):
+                batch = uids[i:i + batch_size]
+                batch_str = b",".join(batch).decode() if isinstance(batch[0], bytes) else ",".join(batch)
+                self.imap.uid("store", batch_str, "+FLAGS", "(\\Deleted)")
+
+            self.imap.expunge()
+
+            # Actualitzar estat a la base de dades local
+            purged_db = self.db.mark_spam_purged(self.user, cutoff_dt.isoformat())
+
+            msg = f"Neteja de retenció ({SPAM_RETENTION_DAYS} dies): eliminats {count} correu(s) de '{target_folder}'"
+            logger.info(f"[{self.user}] 🧹 {msg} (actualitzats {purged_db} a la BD)")
+            self.db.event("INFO", msg, account=self.user)
+
+        except Exception as e:
+            logger.error(f"[{self.user}] Error durant la neteja de retenció de spam: {e}")
+            self.db.event("WARNING", f"Error a la neteja de retenció de spam: {e}", account=self.user)
+
     def run(self):
         logger.info(f"[{self.user}] Fil de monitorització IMAP iniciat")
         last_learn = 0
+        last_retention = 0
 
         while not self.stop_event.is_set():
             try:
@@ -1122,6 +1227,11 @@ class AccountWorker(threading.Thread):
                     self._learn_from_manual_spam()
                     self._check_manual_rescues()
                     last_learn = now
+
+                # Neteja de retenció de spam periòdica (per defecte cada 24h)
+                if SPAM_RETENTION_DAYS > 0 and (now - last_retention > RETENTION_CHECK_INTERVAL):
+                    self._purge_expired_spam()
+                    last_retention = now
 
                 # IMAP IDLE
                 self.imap.select(f'"{FOLDER_INBOX}"')

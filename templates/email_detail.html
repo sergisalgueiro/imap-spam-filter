@@ -20,6 +20,7 @@
         .badge-ok{background:rgba(34,197,94,.2);color:var(--green)}
         .badge-rescued{background:rgba(168,85,247,.2);color:var(--purple)}
         .badge-reported{background:rgba(245,158,11,.2);color:var(--orange)}
+        .badge-purged{background:rgba(148,163,184,.2);color:var(--muted)}
         .badge-account{background:rgba(255,255,255,0.07);color:var(--muted);font-family:monospace}
         .report{background:#111318;padding:1rem;border-radius:6px;font-family:monospace;font-size:.75rem;white-space:pre-wrap;max-height:400px;overflow-y:auto;color:var(--muted);border:1px solid var(--border)}
         .btn{display:inline-block;padding:.5rem 1.2rem;background:var(--blue);color:white;border:none;border-radius:4px;cursor:pointer;font-size:.85rem;margin-top:1rem}.btn:hover{opacity:.85}
@@ -68,6 +69,8 @@
                 <span class="badge badge-rescued">Rescatat</span>
             {% elif email.status == 'reported' %}
                 <span class="badge badge-reported">Reportat com a spam</span>
+            {% elif email.status == 'purged' %}
+                <span class="badge badge-purged">Purgat (Retenció)</span>
             {% elif email.is_spam %}
                 <span class="badge badge-spam">Spam</span>
             {% else %}
@@ -80,7 +83,11 @@
         <div class="detail-value" style="font-size:.7rem;color:var(--muted)">{{ email.message_id }}</div>
     </div>
 
-    {% if email.is_spam and email.status == 'active' %}
+    {% if email.status == 'purged' %}
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:0.75rem 1rem;margin-top:1rem;font-size:0.85rem;color:var(--muted);">
+        🗑️ Aquest correu ha estat purgat automàticament de la carpeta de spam per la política de retenció de {{ retention_days }} dies.
+    </div>
+    {% elif email.is_spam and email.status == 'active' %}
     <form method="POST" action="/rescue/{{ email.id }}">
         <button class="btn" onclick="return confirm('Segur? Es mourà de SpamFilter a INBOX del compte {{ email.account }} i s\'entrenarà com legítim.')">
             ✅ Rescatar aquest correu (moure a INBOX de {{ email.account }})

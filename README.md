@@ -23,6 +23,11 @@ Dissenyat específicament per funcionar 24/7 en dispositius de baix consum (com 
   * **Rescatats (Falsos positius)**: Si un correu legítim acaba per error a `SpamFilter`, es pot prémer "Rescatar" des del Dashboard o retornar-lo a l'`INBOX` des del client de correu. S'entrenarà automàticament com a legítim (`/learnham`).
   * Registre intern a SQLite per evitar sobre-entrenar missatges duplicats.
 
+* **🧹 Retenció i Purga Automàtica de Spam**:
+  * Neteja diària automàtica dels correus de la carpeta `SpamFilter` que superin els dies de retenció configurats (per defecte: 30 dies, configurable via `SPAM_RETENTION_DAYS`).
+  * Eliminació definitiva via IMAP (`\Deleted` + `EXPUNGE`) per alliberar espai a la bústia sense descarregar contingut.
+  * Traçabilitat completa al registre d'esdeveniments i al panell web.
+
 * **🖥️ Dashboard Web de Gestió (Port 8025)**:
   * Interfície web fosca, ràpida i adaptable a mòbil.
   * Resum d'activitat global i desglossament per bústia d'usuari (Escanejats, Spam, Legítims, Rescatats, Reportats).
@@ -143,6 +148,9 @@ SPAM_THRESHOLD=6.0
 # Dashboard
 DASHBOARD_PORT=8025
 DB_PATH="/opt/imap-spam-filter/data/spam_filter.db"
+
+# Retenció (dies a SpamFilter abans d'eliminar, 0 per desactivar)
+SPAM_RETENTION_DAYS=30
 ```
 
 ### 4. Verificar carpetes i connexió

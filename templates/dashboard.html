@@ -122,6 +122,7 @@
         .badge-ok { background: rgba(34,197,94,0.2); color: var(--green); }
         .badge-rescued { background: rgba(168,85,247,0.2); color: var(--purple); }
         .badge-reported { background: rgba(245,158,11,0.2); color: var(--orange); }
+        .badge-purged { background: rgba(148,163,184,0.2); color: var(--muted); }
         .badge-account { background: rgba(255,255,255,0.07); color: var(--muted); font-family: monospace; }
 
         .score { font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 600; }
@@ -195,6 +196,10 @@
             <div class="stat-label">Entrenats (Bayes)</div>
         </div>
         <div class="stat-card">
+            <div class="stat-value" style="color:var(--muted)">{{ totals.purged or 0 }}</div>
+            <div class="stat-label">Purgats ({{ retention_days }}d)</div>
+        </div>
+        <div class="stat-card">
             <div class="stat-value">
                 {% if totals.scanned and totals.scanned > 0 %}
                     {{ "%.1f"|format(totals.spam / totals.scanned * 100) }}%
@@ -215,6 +220,7 @@
                 <th>Legítims</th>
                 <th>Rescatats</th>
                 <th>Reportats</th>
+                <th>Purgats</th>
                 <th>Ratio Spam</th>
                 <th>Filtre</th>
             </tr>
@@ -228,6 +234,7 @@
                 <td><span style="color:var(--green)">{{ at.ham }}</span></td>
                 <td><span style="color:var(--purple)">{{ at.rescued }}</span></td>
                 <td><span style="color:var(--orange)">{{ at.reported or at.learned_spam or 0 }}</span></td>
+                <td><span style="color:var(--muted)">{{ at.purged or 0 }}</span></td>
                 <td>
                     {% if at.scanned > 0 %}
                         {{ "%.1f"|format(at.spam / at.scanned * 100) }}%
@@ -298,6 +305,8 @@
                 <td>
                     {% if e.status == 'rescued' %}
                         <span class="badge badge-rescued">Rescatat</span>
+                    {% elif e.status == 'purged' %}
+                        <span class="badge badge-purged">Purgat</span>
                     {% else %}
                         <form method="POST" action="/rescue/{{ e.id }}" style="display:inline;">
                             <button class="btn btn-sm">Rescatar</button>

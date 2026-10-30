@@ -47,6 +47,7 @@ from imap_bridge import (
     IMAP_SSL,
     FOLDER_SPAM_DEST,
     FOLDER_INBOX,
+    SPAM_RETENTION_DAYS,
     rspamd_learn,
     load_accounts,
 )
@@ -75,6 +76,7 @@ def inject_global_data():
         "count_ham": counts["ham"],
         "count_rescued": counts["rescued"],
         "count_reported": counts["reported"],
+        "retention_days": SPAM_RETENTION_DAYS,
     }
 
 
@@ -126,6 +128,9 @@ def rescue_email(eid):
     em = db.get_email(eid)
     if not em:
         return jsonify({"error": "No trobat"}), 404
+
+    if em.get("status") == "purged":
+        return jsonify({"error": "Aquest correu ha estat purgat per retenció i ja no existeix a la bústia."}), 400
 
     target_acc = em.get("account", "").strip()
     accounts = load_accounts()
@@ -207,6 +212,9 @@ def report_spam(eid):
     em = db.get_email(eid)
     if not em:
         return jsonify({"error": "No trobat"}), 404
+
+    if em.get("status") == "purged":
+        return jsonify({"error": "Aquest correu ha estat purgat per retenció i ja no existeix a la bústia."}), 400
 
     target_acc = em.get("account", "").strip()
     accounts = load_accounts()
@@ -346,6 +354,7 @@ def prometheus_metrics():
     reported = t.get("reported", 0)
     learned_spam = t.get("learned_spam", 0)
     learned_ham = t.get("learned_ham", 0)
+    purged = t.get("purged", 0)
 
     lines = [
         "# HELP imap_spam_scanned_total Total correus escanejats des de les busties IMAP",
@@ -366,6 +375,12 @@ def prometheus_metrics():
         "# HELP imap_spam_learned_total Total correus apresos pel filtre bayesia",
         "# TYPE imap_spam_learned_total counter",
         f"imap_spam_learned_total {learned_spam + learned_ham}",
+        "# HELP imap_spam_purged_total Total correus eliminats definitivament de SpamFilter per retencio",
+        "# TYPE imap_spam_purged_total counter",
+        f"imap_spam_purged_total {purged}",
+        "# HELP imap_spam_retention_days Dies de retencio configurats per a la carpeta SpamFilter",
+        "# TYPE imap_spam_retention_days gauge",
+        f"imap_spam_retention_days {SPAM_RETENTION_DAYS}",
     ]
 
     # Mètriques per compte
@@ -401,6 +416,13 @@ def prometheus_metrics():
             acc_name = at["account"]
             rep_acc = at.get("reported", 0)
             lines.append(f'imap_spam_account_reported_total{{account="{acc_name}"}} {rep_acc}')
+
+        lines.append("# HELP imap_spam_account_purged_total Correus eliminats definitivament per retencio per bustia")
+        lines.append("# TYPE imap_spam_account_purged_total counter")
+        for at in acc_totals:
+            acc_name = at["account"]
+            purged_acc = at.get("purged", 0)
+            lines.append(f'imap_spam_account_purged_total{{account="{acc_name}"}} {purged_acc}')
 
     return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
 
