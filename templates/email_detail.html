@@ -26,6 +26,40 @@
         .btn{display:inline-block;padding:.5rem 1.2rem;background:var(--blue);color:white;border:none;border-radius:4px;cursor:pointer;font-size:.85rem;margin-top:1rem}.btn:hover{opacity:.85}
         .btn-orange{background:var(--orange);color:#000;font-weight:600}
         h2{font-size:1rem;color:var(--muted);margin:1.5rem 0 .8rem;font-weight:500}
+        @media (max-width: 640px) {
+            body { padding: 0.8rem; }
+            .nav {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                padding-bottom: 0.5rem;
+                margin-bottom: 1.2rem;
+            }
+            .nav::-webkit-scrollbar { display: none; }
+            .nav a { flex-shrink: 0; white-space: nowrap; padding: 0.4rem 0.75rem; }
+
+            .detail-grid {
+                grid-template-columns: 1fr;
+                gap: 0.25rem;
+                padding: 1rem;
+            }
+            .detail-label {
+                color: var(--muted);
+                font-size: 0.75rem;
+                margin-top: 0.75rem;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .detail-label:first-child { margin-top: 0; }
+            .detail-value { font-size: 0.9rem; }
+            .btn {
+                width: 100%;
+                text-align: center;
+                padding: 0.75rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
     </style>
 </head>
 <body>

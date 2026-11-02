@@ -29,7 +29,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_scanned_total{account=~\"\"}) or imap_spam_scanned_total",
+          "expr": "sum(imap_spam_account_scanned_total{account=~\"$account\"}) or vector(0)",
           "legendFormat": "Escanejats",
           "refId": "A"
         }
@@ -85,7 +85,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_spam_total{account=~\"\"}) or imap_spam_spam_total",
+          "expr": "sum(imap_spam_account_spam_total{account=~\"$account\"}) or vector(0)",
           "legendFormat": "Spam",
           "refId": "A"
         }
@@ -141,7 +141,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_ham_total{account=~\"\"}) or imap_spam_ham_total",
+          "expr": "sum(imap_spam_account_ham_total{account=~\"$account\"}) or vector(0)",
           "legendFormat": "Legítims",
           "refId": "A"
         }
@@ -197,7 +197,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_rescued_total{account=~\"\"}) or imap_spam_rescued_total",
+          "expr": "sum(imap_spam_account_rescued_total{account=~\"$account\"}) or vector(0)",
           "legendFormat": "Rescatats",
           "refId": "A"
         }
@@ -253,7 +253,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_reported_total{account=~\"\"}) or imap_spam_reported_total",
+          "expr": "sum(imap_spam_account_reported_total{account=~\"$account\"}) or vector(0)",
           "legendFormat": "Reportats",
           "refId": "A"
         }
@@ -309,7 +309,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_purged_total{account=~\"$account\"}) or imap_spam_purged_total",
+          "expr": "sum(imap_spam_account_purged_total{account=~\"$account\"}) or vector(0)",
           "legendFormat": "Purgats",
           "refId": "A"
         }
@@ -478,7 +478,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "(sum(imap_spam_account_spam_total{account=~\"\"}) / sum(imap_spam_account_scanned_total{account=~\"\"})) * 100 or ((imap_spam_spam_total / imap_spam_scanned_total) * 100)",
+          "expr": "(sum(imap_spam_account_spam_total{account=~\"$account\"}) / sum(imap_spam_account_scanned_total{account=~\"$account\"})) * 100 or vector(0)",
           "legendFormat": "% Spam",
           "refId": "A"
         }
@@ -528,7 +528,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "((sum(imap_spam_account_rescued_total{account=~\"\"}) + sum(imap_spam_account_reported_total{account=~\"\"})) / sum(imap_spam_account_scanned_total{account=~\"\"})) * 100 or (((imap_spam_rescued_total + imap_spam_reported_total) / imap_spam_scanned_total) * 100)",
+          "expr": "((sum(imap_spam_account_rescued_total{account=~\"$account\"}) + sum(imap_spam_account_reported_total{account=~\"$account\"})) / sum(imap_spam_account_scanned_total{account=~\"$account\"})) * 100 or vector(0)",
           "legendFormat": "% Errors",
           "refId": "A"
         }
@@ -578,7 +578,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "increase(imap_spam_scanned_total[1h])",
+          "expr": "sum(increase(imap_spam_account_scanned_total{account=~\"$account\"}[1h]))",
           "legendFormat": "Escanejats",
           "refId": "A"
         },
@@ -587,7 +587,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "increase(imap_spam_spam_total[1h])",
+          "expr": "sum(increase(imap_spam_account_spam_total{account=~\"$account\"}[1h]))",
           "legendFormat": "Spam",
           "refId": "B"
         },
@@ -596,7 +596,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "increase(imap_spam_ham_total[1h])",
+          "expr": "sum(increase(imap_spam_account_ham_total{account=~\"$account\"}[1h]))",
           "legendFormat": "Legítims",
           "refId": "C"
         }
@@ -679,7 +679,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "increase(imap_spam_rescued_total[1h])",
+          "expr": "sum(increase(imap_spam_account_rescued_total{account=~\"$account\"}[1h]))",
           "legendFormat": "Rescatats",
           "refId": "A"
         },
@@ -688,7 +688,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "increase(imap_spam_reported_total[1h])",
+          "expr": "sum(increase(imap_spam_account_reported_total{account=~\"$account\"}[1h]))",
           "legendFormat": "Reportats",
           "refId": "B"
         }
@@ -754,7 +754,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "imap_spam_account_scanned_total",
+          "expr": "sum by (account) (imap_spam_account_scanned_total{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -765,7 +765,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "imap_spam_account_spam_total",
+          "expr": "sum by (account) (imap_spam_account_spam_total{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -776,7 +776,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "imap_spam_account_ham_total",
+          "expr": "sum by (account) (imap_spam_account_ham_total{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -787,7 +787,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "imap_spam_account_rescued_total",
+          "expr": "sum by (account) (imap_spam_account_rescued_total{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -798,7 +798,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "imap_spam_account_reported_total",
+          "expr": "sum by (account) (imap_spam_account_reported_total{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -809,7 +809,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "imap_spam_account_purged_total",
+          "expr": "sum by (account) (imap_spam_account_purged_total{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -859,8 +859,12 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": "All",
-          "value": ""
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
         },
         "datasource": {
           "type": "prometheus",

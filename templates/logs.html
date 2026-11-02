@@ -35,9 +35,27 @@
         th{background:var(--border);color:var(--muted);font-weight:500;font-size:.8rem;text-align:left;padding:.7rem 1rem}
         td{padding:.5rem 1rem;border-top:1px solid var(--border);font-size:.8rem;font-family:monospace}
         tr:hover td{background:rgba(255,255,255,.03)}
+        .table-responsive{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:2rem;border-radius:8px;border:1px solid var(--border);background:var(--card)}
+        .table-responsive table{margin-bottom:0;border:none;border-radius:0}
+        .th-ts{width:160px;white-space:nowrap}
+        .th-acc{width:140px;white-space:nowrap}
+        .th-lvl{width:70px;white-space:nowrap}
         .log-info{color:var(--blue)}.log-error{color:var(--red)}.log-warning{color:var(--orange)}.log-critical{color:var(--red);font-weight:700}
         .badge-account{display:inline-block;padding:.1rem .4rem;border-radius:4px;font-size:.7rem;background:rgba(255,255,255,0.07);color:var(--muted)}
         .empty{text-align:center;padding:3rem;color:var(--muted)}
+        @media(max-width:768px){
+            body{padding:.8rem}
+            .header{flex-direction:column;align-items:flex-start;gap:.75rem;margin-bottom:1rem}
+            .account-selector{width:100%;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:.4rem .6rem}
+            .account-selector::-webkit-scrollbar{display:none}
+            .account-label{flex-shrink:0}
+            .account-pill{flex-shrink:0;white-space:nowrap;padding:.35rem .75rem}
+            .nav{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:.5rem;margin-bottom:1.2rem}
+            .nav::-webkit-scrollbar{display:none}
+            .nav a{flex-shrink:0;white-space:nowrap;padding:.4rem .75rem}
+            td,th{padding:.5rem .7rem;font-size:.8rem}
+            td:nth-child(4){min-width:280px}
+        }
     </style>
 </head>
 <body>
@@ -62,12 +80,13 @@
     </nav>
 
     {% if events %}
+    <div class="table-responsive">
     <table>
         <thead>
             <tr>
-                <th style="width:160px">Timestamp</th>
-                <th style="width:140px">Bústia</th>
-                <th style="width:70px">Nivell</th>
+                <th class="th-ts">Timestamp</th>
+                <th class="th-acc">Bústia</th>
+                <th class="th-lvl">Nivell</th>
                 <th>Missatge</th>
             </tr>
         </thead>
@@ -88,6 +107,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
         <div class="empty">Encara no hi ha events registrats</div>
     {% endif %}
