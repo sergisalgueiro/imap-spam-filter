@@ -106,6 +106,7 @@ LEARN_INTERVAL = int(os.environ.get("LEARN_INTERVAL", "3600"))  # 1 hora
 MAX_EMAIL_SIZE = int(os.environ.get("MAX_EMAIL_SIZE", "524288"))  # 512KB
 SPAM_RETENTION_DAYS = int(os.environ.get("SPAM_RETENTION_DAYS", "30"))  # Retenció a SpamFilter en dies (0 per desactivar)
 RETENTION_CHECK_INTERVAL = int(os.environ.get("RETENTION_CHECK_INTERVAL", "86400"))  # Interval de comprovació (1 dia = 86400s)
+RESCUE_INTERVAL = int(os.environ.get("RESCUE_INTERVAL", "600"))  # Interval comprovació rescats manuals (10 min)
 
 
 def load_accounts() -> List[Dict[str, str]]:
@@ -661,6 +662,21 @@ def decode_hdr(value) -> str:
         return str(value)
 
 
+def extract_header_msgid(fetch_hdr_data) -> str:
+    """Extreu el Message-ID d'una resposta de fetch HEADER.FIELDS sense descarregar el cos."""
+    if not fetch_hdr_data or not fetch_hdr_data[0]:
+        return ""
+    item = fetch_hdr_data[0]
+    raw_hdr = item[1] if isinstance(item, tuple) and len(item) > 1 else None
+    if not isinstance(raw_hdr, bytes):
+        return ""
+    text = raw_hdr.decode("utf-8", errors="ignore")
+    m = re.search(r"Message-ID:\s*(<[^>\r\n]+>|[^\r\n]+)", text, re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
 def email_info(raw: bytes) -> dict:
     msg = email.message_from_bytes(raw)
     mid = msg.get("Message-ID") or f"<gen-{hashlib.md5(raw[:500]).hexdigest()}@local>"
@@ -934,6 +950,23 @@ class AccountWorker(threading.Thread):
                     break
                 uid = uid_bytes.decode() if isinstance(uid_bytes, bytes) else str(uid_bytes)
                 try:
+                    # Comprovem primer només la capçalera Message-ID (estalvi massiu d'ample de banda)
+                    msgid = ""
+                    try:
+                        typ_hdr, hdr_data = self.imap.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+                        if typ_hdr == "OK":
+                            msgid = extract_header_msgid(hdr_data)
+                    except Exception as e:
+                        logger.debug(f"[{self.user}] Error llegint capçalera UID {uid}: {e}")
+
+                    if msgid:
+                        prev = self.db.get_email_by_msgid(self.user, msgid)
+                        if prev:
+                            # Si no és un spam actiu mogut a l'INBOX, ja està processat prèviament: ometre sense descarregar el cos
+                            if not (prev["is_spam"] == 1 and prev["status"] == "active"):
+                                continue
+
+                    # Descarregar el cos complet únicament per a correus nous o rescatats
                     typ, fetch_data = self.imap.uid("fetch", uid, "(BODY.PEEK[])")
                     if typ != "OK" or not fetch_data or not fetch_data[0]:
                         continue
@@ -1114,6 +1147,18 @@ class AccountWorker(threading.Thread):
                         break
                     uid = uid_bytes.decode() if isinstance(uid_bytes, bytes) else str(uid_bytes)
                     try:
+                        # Comprovar Message-ID abans de descarregar el cos per estalviar ample de banda
+                        msgid = ""
+                        try:
+                            typ_hdr, hdr_data = self.imap.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+                            if typ_hdr == "OK":
+                                msgid = extract_header_msgid(hdr_data)
+                        except Exception:
+                            pass
+
+                        if msgid and self.db.is_learned(msgid):
+                            continue
+
                         typ, fetch_data = self.imap.uid("fetch", uid, "(BODY.PEEK[])")
                         if typ == "OK" and fetch_data and fetch_data[0]:
                             raw = fetch_data[0][1]
@@ -1210,6 +1255,7 @@ class AccountWorker(threading.Thread):
     def run(self):
         logger.info(f"[{self.user}] Fil de monitorització IMAP iniciat")
         last_learn = 0
+        last_rescue = 0
         last_retention = 0
 
         while not self.stop_event.is_set():
@@ -1219,10 +1265,14 @@ class AccountWorker(threading.Thread):
                     break
 
                 self._scan_inbox()
-                self._check_manual_rescues()
+
+                now = time.time()
+                # Comprovació periòdica de rescats manuals (cada RESCUE_INTERVAL, per defecte 10 min)
+                if now - last_rescue > RESCUE_INTERVAL:
+                    self._check_manual_rescues()
+                    last_rescue = now
 
                 # Entrenament bayesià periòdic
-                now = time.time()
                 if now - last_learn > LEARN_INTERVAL:
                     self._learn_from_manual_spam()
                     self._check_manual_rescues()
@@ -1241,9 +1291,18 @@ class AccountWorker(threading.Thread):
                 if b"+" in resp:
                     self.imap.sock.settimeout(IDLE_TIMEOUT)
                     try:
-                        line = self.imap.readline()
-                        if b"EXISTS" in line:
-                            logger.info(f"[{self.user}] 📬 Correu nou detectat via IDLE!")
+                        while not self.stop_event.is_set():
+                            line = self.imap.readline()
+                            if not line:
+                                break
+                            # Keep-alive del servidor (ex: "* OK Still here" a Courier/Dovecot): continuar en IDLE
+                            if b"Still here" in line or b"still here" in line or b"HEARTBEAT" in line:
+                                continue
+                            if b"EXISTS" in line:
+                                logger.info(f"[{self.user}] 📬 Correu nou detectat via IDLE!")
+                                break
+                            if b"EXPUNGE" in line or b"FETCH" in line:
+                                break
                     except socket.timeout:
                         pass
                     except Exception as e:
