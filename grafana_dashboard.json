@@ -820,7 +820,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum by (account) (imap_spam_account_month_bytes{account=~\"\"})",
+          "expr": "sum by (account) (imap_spam_account_wire_month_bytes{account=~\"\"}) or sum by (account) (imap_spam_account_month_bytes{account=~\"\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -831,7 +831,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum by (account) (imap_spam_account_processed_bytes_total{account=~\"\"})",
+          "expr": "sum by (account) (imap_spam_account_wire_bytes_total{account=~\"\"}) or sum by (account) (imap_spam_account_processed_bytes_total{account=~\"\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
@@ -897,7 +897,7 @@
       }
     },
     {
-      "title": "Tràfic Mes (Quota)",
+      "title": "Tràfic Real Plesk (mes)",
       "type": "stat",
       "id": 14,
       "datasource": {
@@ -916,7 +916,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_month_bytes{account=~\"\"}) or vector(0)",
+          "expr": "sum(imap_spam_account_wire_month_bytes{account=~\"\"}) or sum(imap_spam_account_month_bytes{account=~\"\"}) or vector(0)",
           "legendFormat": "Tràfic mes",
           "refId": "A"
         }
@@ -959,7 +959,7 @@
       }
     },
     {
-      "title": "Tràfic Total Escanejat",
+      "title": "Tràfic Real Plesk (total)",
       "type": "stat",
       "id": 15,
       "datasource": {
@@ -978,7 +978,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_processed_bytes_total{account=~\"\"}) or vector(0)",
+          "expr": "sum(imap_spam_account_wire_bytes_total{account=~\"\"}) or sum(imap_spam_account_processed_bytes_total{account=~\"\"}) or vector(0)",
           "legendFormat": "Total",
           "refId": "A"
         }
@@ -1024,7 +1024,7 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum by (account) (increase(imap_spam_account_processed_bytes_total{account=~\"\"}[1h]))",
+          "expr": "sum by (account) (increase(imap_spam_account_wire_bytes_total{account=~\"\"}[1h])) or sum by (account) (increase(imap_spam_account_processed_bytes_total{account=~\"\"}[1h]))",
           "legendFormat": "{{account}}",
           "refId": "A"
         }

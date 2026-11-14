@@ -402,6 +402,18 @@ def prometheus_metrics():
         "# HELP imap_spam_month_bytes Bytes escanejats durant el mes en curs",
         "# TYPE imap_spam_month_bytes gauge",
         f"imap_spam_month_bytes {t.get('bytes_month', 0)}",
+        "# HELP imap_spam_wire_bytes_total Total de bytes TCP reals transferits amb Plesk (RX+TX)",
+        "# TYPE imap_spam_wire_bytes_total counter",
+        f"imap_spam_wire_bytes_total {t.get('wire_bytes_total', 0)}",
+        "# HELP imap_spam_wire_month_bytes Bytes TCP reals transferits amb Plesk durant el mes en curs",
+        "# TYPE imap_spam_wire_month_bytes gauge",
+        f"imap_spam_wire_month_bytes {t.get('wire_bytes_month', 0)}",
+        "# HELP imap_spam_wire_rx_total Bytes TCP rebuts des de Plesk",
+        "# TYPE imap_spam_wire_rx_total counter",
+        f"imap_spam_wire_rx_total {t.get('wire_rx_total', 0)}",
+        "# HELP imap_spam_wire_tx_total Bytes TCP enviats cap a Plesk",
+        "# TYPE imap_spam_wire_tx_total counter",
+        f"imap_spam_wire_tx_total {t.get('wire_tx_total', 0)}",
     ]
 
     # Mètriques per compte
@@ -456,6 +468,18 @@ def prometheus_metrics():
         for at in acc_totals:
             acc_name = at["account"]
             lines.append(f'imap_spam_account_month_bytes{{account="{acc_name}"}} {at.get("bytes_month", 0)}')
+
+        lines.append("# HELP imap_spam_account_wire_bytes_total Bytes TCP reals transferits amb Plesk per bustia")
+        lines.append("# TYPE imap_spam_account_wire_bytes_total counter")
+        for at in acc_totals:
+            acc_name = at["account"]
+            lines.append(f'imap_spam_account_wire_bytes_total{{account="{acc_name}"}} {at.get("wire_bytes_total", 0)}')
+
+        lines.append("# HELP imap_spam_account_wire_month_bytes Bytes TCP reals transferits amb Plesk aquest mes per bustia")
+        lines.append("# TYPE imap_spam_account_wire_month_bytes gauge")
+        for at in acc_totals:
+            acc_name = at["account"]
+            lines.append(f'imap_spam_account_wire_month_bytes{{account="{acc_name}"}} {at.get("wire_bytes_month", 0)}')
 
     return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
 

@@ -14,6 +14,7 @@ import sys
 import time
 import signal
 import socket
+import struct
 import sqlite3
 import hashlib
 import logging
@@ -236,7 +237,7 @@ class Database:
                         c.execute("DROP TABLE daily_stats")
                         c.execute("ALTER TABLE daily_stats_new RENAME TO daily_stats")
                         logger.info("Migració de 'daily_stats' completada.")
-                    elif "reported" not in cols:
+                    if "reported" not in cols:
                         c.execute("ALTER TABLE daily_stats ADD COLUMN reported INTEGER DEFAULT 0")
                         c.execute("""
                             UPDATE daily_stats
@@ -248,6 +249,12 @@ class Database:
                             )
                         """)
                         logger.info("Columna 'reported' afegida i sincronitzada a 'daily_stats'.")
+                    if "bytes_rx" not in cols:
+                        c.execute("ALTER TABLE daily_stats ADD COLUMN bytes_rx INTEGER DEFAULT 0")
+                        logger.info("Columna 'bytes_rx' afegida a 'daily_stats'.")
+                    if "bytes_tx" not in cols:
+                        c.execute("ALTER TABLE daily_stats ADD COLUMN bytes_tx INTEGER DEFAULT 0")
+                        logger.info("Columna 'bytes_tx' afegida a 'daily_stats'.")
 
                 # Comprovació i addició de columna account a 'events' i 'learned_emails'
                 t_events = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='events'").fetchone()
@@ -422,6 +429,25 @@ class Database:
             finally:
                 c.close()
 
+    def bump_traffic(self, account: str = "", bytes_rx: int = 0, bytes_tx: int = 0):
+        """Acumula els bytes TCP reals transferits amb el servidor IMAP de Plesk."""
+        if bytes_rx <= 0 and bytes_tx <= 0:
+            return
+        today = datetime.now().strftime("%Y-%m-%d")
+        with self.lock:
+            c = self._conn()
+            try:
+                c.execute("""
+                    INSERT INTO daily_stats (date, account, bytes_rx, bytes_tx)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(date, account) DO UPDATE SET
+                        bytes_rx = bytes_rx + excluded.bytes_rx,
+                        bytes_tx = bytes_tx + excluded.bytes_tx
+                """, (today, account, max(0, bytes_rx), max(0, bytes_tx)))
+                c.commit()
+            finally:
+                c.close()
+
     def event(self, level: str, msg: str, account: str = ""):
         with self.lock:
             c = self._conn()
@@ -546,9 +572,17 @@ class Database:
                            COALESCE(SUM(rescued),0) as rescued,
                            COALESCE(SUM(reported),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
-                           COALESCE(SUM(learned_ham),0) as learned_ham
+                           COALESCE(SUM(learned_ham),0) as learned_ham,
+                           COALESCE(SUM(bytes_rx),0) as bytes_rx,
+                           COALESCE(SUM(bytes_tx),0) as bytes_tx
                     FROM daily_stats
                     WHERE account = ?
+                """, (account,)).fetchone()
+                m = c.execute("""
+                    SELECT COALESCE(SUM(bytes_rx),0) as month_rx,
+                           COALESCE(SUM(bytes_tx),0) as month_tx
+                    FROM daily_stats
+                    WHERE account = ? AND date >= date('now', 'start of month')
                 """, (account,)).fetchone()
             else:
                 r = c.execute("""
@@ -558,8 +592,16 @@ class Database:
                            COALESCE(SUM(rescued),0) as rescued,
                            COALESCE(SUM(reported),0) as reported,
                            COALESCE(SUM(learned_spam),0) as learned_spam,
-                           COALESCE(SUM(learned_ham),0) as learned_ham
+                           COALESCE(SUM(learned_ham),0) as learned_ham,
+                           COALESCE(SUM(bytes_rx),0) as bytes_rx,
+                           COALESCE(SUM(bytes_tx),0) as bytes_tx
                     FROM daily_stats
+                """).fetchone()
+                m = c.execute("""
+                    SELECT COALESCE(SUM(bytes_rx),0) as month_rx,
+                           COALESCE(SUM(bytes_tx),0) as month_tx
+                    FROM daily_stats
+                    WHERE date >= date('now', 'start of month')
                 """).fetchone()
             d = dict(r) if r else {}
             d["purged"] = self.get_purged_count(account=account)
@@ -567,6 +609,17 @@ class Database:
             d["bytes_total"] = t_stats.get("bytes_total", 0)
             d["bytes_month"] = t_stats.get("bytes_month", 0)
             d["bytes_today"] = t_stats.get("bytes_today", 0)
+            # Tràfic real TCP mesurat amb Plesk (wire)
+            rx_tot = d.get("bytes_rx", 0)
+            tx_tot = d.get("bytes_tx", 0)
+            rx_m = m["month_rx"] if m else 0
+            tx_m = m["month_tx"] if m else 0
+            d["wire_rx_total"] = rx_tot
+            d["wire_tx_total"] = tx_tot
+            d["wire_bytes_total"] = rx_tot + tx_tot
+            d["wire_rx_month"] = rx_m
+            d["wire_tx_month"] = tx_m
+            d["wire_bytes_month"] = rx_m + tx_m
             return d
         finally:
             c.close()
@@ -582,18 +635,30 @@ class Database:
                        COALESCE(SUM(rescued),0) as rescued,
                        COALESCE(SUM(reported),0) as reported,
                        COALESCE(SUM(learned_spam),0) as learned_spam,
-                       COALESCE(SUM(learned_ham),0) as learned_ham
+                       COALESCE(SUM(learned_ham),0) as learned_ham,
+                       COALESCE(SUM(bytes_rx),0) as wire_rx_total,
+                       COALESCE(SUM(bytes_tx),0) as wire_tx_total,
+                       COALESCE(SUM(bytes_rx + bytes_tx),0) as wire_bytes_total
                 FROM daily_stats
                 WHERE account != ''
                 GROUP BY account
                 ORDER BY account
             """).fetchall()
+            m_rows = c.execute("""
+                SELECT account,
+                       COALESCE(SUM(bytes_rx + bytes_tx),0) as wire_bytes_month
+                FROM daily_stats
+                WHERE account != '' AND date >= date('now', 'start of month')
+                GROUP BY account
+            """).fetchall()
+            month_wire = {mr["account"]: mr["wire_bytes_month"] for mr in m_rows}
             purged_by_acc = self.get_purged_by_account()
             traffic_by_acc = self.get_account_traffic()
             result = []
             for r in rows:
                 d = dict(r)
                 d["purged"] = purged_by_acc.get(d["account"], 0)
+                d["wire_bytes_month"] = month_wire.get(d["account"], 0)
                 t_acc = traffic_by_acc.get(d["account"], {})
                 d["bytes_total"] = t_acc.get("bytes_total", 0)
                 d["bytes_month"] = t_acc.get("bytes_month", 0)
@@ -736,6 +801,20 @@ def extract_header_msgid(fetch_hdr_data) -> str:
     return ""
 
 
+def get_socket_wire_bytes(sock) -> Tuple[int, int]:
+    """Retorna els (bytes_rebuts, bytes_enviats) TCP reals de la connexió des del kernel Linux."""
+    try:
+        raw = getattr(sock, "_sock", sock)
+        if hasattr(raw, "getsockopt") and hasattr(socket, "TCP_INFO"):
+            info = raw.getsockopt(socket.SOL_TCP, socket.TCP_INFO, 256)
+            if len(info) >= 136:
+                sent, recv = struct.unpack_from("<QQ", info, 120)
+                return recv, sent
+    except Exception:
+        pass
+    return 0, 0
+
+
 def email_info(raw: bytes) -> dict:
     msg = email.message_from_bytes(raw)
     mid = msg.get("Message-ID") or f"<gen-{hashlib.md5(raw[:500]).hexdigest()}@local>"
@@ -872,11 +951,34 @@ class AccountWorker(threading.Thread):
         self.imap: Optional[imaplib.IMAP4] = None
         self.dest_folder = FOLDER_SPAM_DEST
         self.manual_folders = [FOLDER_SPAM_MANUAL]
+        self.last_sock_rx = 0
+        self.last_sock_tx = 0
         self.daemon = True
+
+    def _sync_socket_traffic(self, is_initial=False):
+        """Calcula el delta de bytes TCP transferits pel socket IMAP des de l'última comprovació."""
+        if not self.imap or not hasattr(self.imap, "sock") or not self.imap.sock:
+            return
+        cur_rx, cur_tx = get_socket_wire_bytes(self.imap.sock)
+        if cur_rx == 0 and cur_tx == 0:
+            return
+        if is_initial:
+            self.last_sock_rx = cur_rx
+            self.last_sock_tx = cur_tx
+            self.db.bump_traffic(account=self.user, bytes_rx=cur_rx, bytes_tx=cur_tx)
+            return
+
+        delta_rx = cur_rx - self.last_sock_rx if self.last_sock_rx > 0 else 0
+        delta_tx = cur_tx - self.last_sock_tx if self.last_sock_tx > 0 else 0
+        self.last_sock_rx = cur_rx
+        self.last_sock_tx = cur_tx
+        if delta_rx > 0 or delta_tx > 0:
+            self.db.bump_traffic(account=self.user, bytes_rx=delta_rx, bytes_tx=delta_tx)
 
     def stop(self):
         """Interromp qualsevol lectura de socket pendent."""
         try:
+            self._sync_socket_traffic()
             if self.imap and hasattr(self.imap, "sock") and self.imap.sock:
                 self.imap.sock.shutdown(socket.SHUT_RDWR)
                 self.imap.sock.close()
@@ -932,6 +1034,7 @@ class AccountWorker(threading.Thread):
         logger.info(f"[{self.user}] ✅ Connectat correctament")
         self.db.event("INFO", f"Connexió IMAP establerta", account=self.user)
         self.imap = imap
+        self._sync_socket_traffic(is_initial=True)
 
         # Assegurar carpeta de destinació per a l'spam
         self.dest_folder = self._resolve_or_create(FOLDER_SPAM_DEST)
@@ -1324,17 +1427,20 @@ class AccountWorker(threading.Thread):
                     break
 
                 self._scan_inbox()
+                self._sync_socket_traffic()
 
                 now = time.time()
                 # Comprovació periòdica de rescats manuals (cada RESCUE_INTERVAL, per defecte 10 min)
                 if now - last_rescue > RESCUE_INTERVAL:
                     self._check_manual_rescues()
+                    self._sync_socket_traffic()
                     last_rescue = now
 
                 # Entrenament bayesià periòdic
                 if now - last_learn > LEARN_INTERVAL:
                     self._learn_from_manual_spam()
                     self._check_manual_rescues()
+                    self._sync_socket_traffic()
                     last_learn = now
 
                 # Neteja de retenció de spam periòdica (per defecte cada 24h)
@@ -1373,12 +1479,14 @@ class AccountWorker(threading.Thread):
                         self.imap.readline()
                     except Exception:
                         pass
+                    self._sync_socket_traffic()
                     try:
                         self.imap.sock.settimeout(None)
                     except Exception:
                         pass
                 else:
                     self.stop_event.wait(POLL_INTERVAL)
+                    self._sync_socket_traffic()
 
             except Exception as e:
                 if not self.stop_event.is_set():

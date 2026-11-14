@@ -276,9 +276,13 @@
             <div class="stat-label">Ratio spam</div>
         </div>
         <div class="stat-card" style="border-top: 3px solid var(--blue)">
-            <div class="stat-value" style="color:#60a5fa">{{ (totals.bytes_month or 0) | format_bytes }}</div>
-            <div class="stat-label">Tràfic analitzat (mes)</div>
-            <div style="font-size:0.75rem; color:var(--muted); margin-top:0.25rem;">Total: {{ (totals.bytes_total or 0) | format_bytes }}</div>
+            <div class="stat-value" style="color:#60a5fa">
+                {{ ((totals.wire_bytes_month or 0) if totals.wire_bytes_month else (totals.bytes_month or 0)) | format_bytes }}
+            </div>
+            <div class="stat-label">Tràfic Real Xarxa Plesk (mes)</div>
+            <div style="font-size:0.75rem; color:var(--muted); margin-top:0.25rem;">
+                Total: {{ ((totals.wire_bytes_total or 0) if totals.wire_bytes_total else (totals.bytes_total or 0)) | format_bytes }} (Correus: {{ (totals.bytes_month or 0) | format_bytes }})
+            </div>
         </div>
     </div>
 
@@ -296,7 +300,7 @@
                 <th>Reportats</th>
                 <th>Purgats</th>
                 <th>Ratio Spam</th>
-                <th>Tràfic (mes)</th>
+                <th>Tràfic Real Plesk (mes)</th>
                 <th>Filtre</th>
             </tr>
         </thead>
@@ -315,7 +319,7 @@
                         {{ "%.1f"|format(at.spam / at.scanned * 100) }}%
                     {% else %}0%{% endif %}
                 </td>
-                <td><span style="color:#60a5fa; font-weight:600;">{{ (at.bytes_month or 0) | format_bytes }}</span></td>
+                <td><span style="color:#60a5fa; font-weight:600;">{{ ((at.wire_bytes_month or 0) if at.wire_bytes_month else (at.bytes_month or 0)) | format_bytes }}</span></td>
                 <td>
                     <a href="/?account={{ at.account }}" class="btn btn-sm">Veure detalls</a>
                 </td>
