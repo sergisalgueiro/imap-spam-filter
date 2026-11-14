@@ -70,7 +70,7 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 3,
+        "w": 2,
         "x": 3,
         "y": 0
       },
@@ -126,8 +126,8 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 6,
+        "w": 2,
+        "x": 5,
         "y": 0
       },
       "id": 3,
@@ -182,8 +182,8 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 9,
+        "w": 2,
+        "x": 7,
         "y": 0
       },
       "id": 4,
@@ -238,8 +238,8 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 12,
+        "w": 2,
+        "x": 9,
         "y": 0
       },
       "id": 5,
@@ -294,8 +294,8 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 15,
+        "w": 2,
+        "x": 11,
         "y": 0
       },
       "id": 12,
@@ -350,8 +350,8 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 18,
+        "w": 2,
+        "x": 13,
         "y": 0
       },
       "id": 6,
@@ -406,8 +406,8 @@
       "type": "stat",
       "gridPos": {
         "h": 4,
-        "w": 3,
-        "x": 21,
+        "w": 2,
+        "x": 15,
         "y": 0
       },
       "id": 13,
@@ -814,6 +814,28 @@
           "instant": true,
           "legendFormat": "",
           "refId": "Purged"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fe6xf8o67yuwwa"
+          },
+          "expr": "sum by (account) (imap_spam_account_month_bytes{account=~\"\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "TrafficMonth"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fe6xf8o67yuwwa"
+          },
+          "expr": "sum by (account) (imap_spam_account_processed_bytes_total{account=~\"\"})",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "TrafficTotal"
         }
       ],
       "transformations": [
@@ -837,11 +859,213 @@
               "Value #Ham": "Legítims",
               "Value #Rescued": "Rescatats",
               "Value #Reported": "Reportats",
-              "Value #Purged": "Purgats"
+              "Value #Purged": "Purgats",
+              "Value #TrafficMonth": "Tràfic (mes)",
+              "Value #TrafficTotal": "Tràfic (total)"
             }
           }
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tràfic (mes)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tràfic (total)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "Tràfic Mes (Quota)",
+      "type": "stat",
+      "id": 14,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fe6xf8o67yuwwa"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 17,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fe6xf8o67yuwwa"
+          },
+          "expr": "sum(imap_spam_account_month_bytes{account=~\"\"}) or vector(0)",
+          "legendFormat": "Tràfic mes",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 2147483648
+              },
+              {
+                "color": "red",
+                "value": 5368709120
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "title": "Tràfic Total Escanejat",
+      "type": "stat",
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fe6xf8o67yuwwa"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fe6xf8o67yuwwa"
+          },
+          "expr": "sum(imap_spam_account_processed_bytes_total{account=~\"\"}) or vector(0)",
+          "legendFormat": "Total",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3b82f6"
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "title": "Evolució del Tràfic Escanejat (per hora)",
+      "type": "timeseries",
+      "id": 16,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fe6xf8o67yuwwa"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fe6xf8o67yuwwa"
+          },
+          "expr": "sum by (account) (increase(imap_spam_account_processed_bytes_total{account=~\"\"}[1h]))",
+          "legendFormat": "{{account}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 1,
+            "fillOpacity": 60,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "showPoints": "auto",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisPlacement": "auto"
+          },
+          "unit": "bytes",
+          "color": {
+            "mode": "palette-classic"
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "sum"
+          ]
+        }
+      }
     }
   ],
   "refresh": "30s",

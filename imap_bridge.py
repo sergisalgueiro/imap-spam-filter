@@ -485,6 +485,56 @@ class Database:
         finally:
             c.close()
 
+    def get_traffic_stats(self, account: Optional[str] = None) -> dict:
+        """Retorna el volum escanejat en bytes (total, mes actual i avui)."""
+        c = self._conn()
+        try:
+            if account:
+                r = c.execute("""
+                    SELECT 
+                        COALESCE(SUM(size_bytes), 0) as bytes_total,
+                        COALESCE(SUM(CASE WHEN date_scan >= date('now', 'start of month') THEN size_bytes ELSE 0 END), 0) as bytes_month,
+                        COALESCE(SUM(CASE WHEN date_scan >= date('now') THEN size_bytes ELSE 0 END), 0) as bytes_today
+                    FROM emails
+                    WHERE account = ?
+                """, (account,)).fetchone()
+            else:
+                r = c.execute("""
+                    SELECT 
+                        COALESCE(SUM(size_bytes), 0) as bytes_total,
+                        COALESCE(SUM(CASE WHEN date_scan >= date('now', 'start of month') THEN size_bytes ELSE 0 END), 0) as bytes_month,
+                        COALESCE(SUM(CASE WHEN date_scan >= date('now') THEN size_bytes ELSE 0 END), 0) as bytes_today
+                    FROM emails
+                """).fetchone()
+            return dict(r) if r else {"bytes_total": 0, "bytes_month": 0, "bytes_today": 0}
+        finally:
+            c.close()
+
+    def get_account_traffic(self) -> Dict[str, dict]:
+        """Retorna el volum escanejat en bytes agrupats per compte."""
+        c = self._conn()
+        try:
+            rows = c.execute("""
+                SELECT 
+                    account,
+                    COALESCE(SUM(size_bytes), 0) as bytes_total,
+                    COALESCE(SUM(CASE WHEN date_scan >= date('now', 'start of month') THEN size_bytes ELSE 0 END), 0) as bytes_month,
+                    COALESCE(SUM(CASE WHEN date_scan >= date('now') THEN size_bytes ELSE 0 END), 0) as bytes_today
+                FROM emails
+                WHERE account != ''
+                GROUP BY account
+            """).fetchall()
+            return {
+                r["account"]: {
+                    "bytes_total": r["bytes_total"],
+                    "bytes_month": r["bytes_month"],
+                    "bytes_today": r["bytes_today"],
+                }
+                for r in rows
+            }
+        finally:
+            c.close()
+
     def get_totals(self, account: Optional[str] = None) -> dict:
         c = self._conn()
         try:
@@ -513,6 +563,10 @@ class Database:
                 """).fetchone()
             d = dict(r) if r else {}
             d["purged"] = self.get_purged_count(account=account)
+            t_stats = self.get_traffic_stats(account=account)
+            d["bytes_total"] = t_stats.get("bytes_total", 0)
+            d["bytes_month"] = t_stats.get("bytes_month", 0)
+            d["bytes_today"] = t_stats.get("bytes_today", 0)
             return d
         finally:
             c.close()
@@ -535,10 +589,15 @@ class Database:
                 ORDER BY account
             """).fetchall()
             purged_by_acc = self.get_purged_by_account()
+            traffic_by_acc = self.get_account_traffic()
             result = []
             for r in rows:
                 d = dict(r)
                 d["purged"] = purged_by_acc.get(d["account"], 0)
+                t_acc = traffic_by_acc.get(d["account"], {})
+                d["bytes_total"] = t_acc.get("bytes_total", 0)
+                d["bytes_month"] = t_acc.get("bytes_month", 0)
+                d["bytes_today"] = t_acc.get("bytes_today", 0)
                 result.append(d)
             return result
         finally:

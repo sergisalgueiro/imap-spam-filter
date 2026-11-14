@@ -80,6 +80,21 @@ def inject_global_data():
     }
 
 
+@app.template_filter("format_bytes")
+def format_bytes(size_bytes):
+    """Formata una mida en bytes a una unitat llegible (B, KB, MB, GB)."""
+    if not size_bytes or size_bytes <= 0:
+        return "0 B"
+    size = float(size_bytes)
+    for unit in ["B", "KB", "MB", "GB"]:
+        if size < 1024.0 or unit == "GB":
+            if unit in ["B", "KB"]:
+                return f"{size:.0f} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} GB"
+
+
 @app.route("/")
 def index():
     acc = request.args.get("account", "").strip() or None
@@ -381,6 +396,12 @@ def prometheus_metrics():
         "# HELP imap_spam_retention_days Dies de retencio configurats per a la carpeta SpamFilter",
         "# TYPE imap_spam_retention_days gauge",
         f"imap_spam_retention_days {SPAM_RETENTION_DAYS}",
+        "# HELP imap_spam_processed_bytes_total Total de bytes escanejats pel filtre",
+        "# TYPE imap_spam_processed_bytes_total counter",
+        f"imap_spam_processed_bytes_total {t.get('bytes_total', 0)}",
+        "# HELP imap_spam_month_bytes Bytes escanejats durant el mes en curs",
+        "# TYPE imap_spam_month_bytes gauge",
+        f"imap_spam_month_bytes {t.get('bytes_month', 0)}",
     ]
 
     # Mètriques per compte
@@ -423,6 +444,18 @@ def prometheus_metrics():
             acc_name = at["account"]
             purged_acc = at.get("purged", 0)
             lines.append(f'imap_spam_account_purged_total{{account="{acc_name}"}} {purged_acc}')
+
+        lines.append("# HELP imap_spam_account_processed_bytes_total Bytes escanejats per bustia")
+        lines.append("# TYPE imap_spam_account_processed_bytes_total counter")
+        for at in acc_totals:
+            acc_name = at["account"]
+            lines.append(f'imap_spam_account_processed_bytes_total{{account="{acc_name}"}} {at.get("bytes_total", 0)}')
+
+        lines.append("# HELP imap_spam_account_month_bytes Bytes escanejats aquest mes per bustia")
+        lines.append("# TYPE imap_spam_account_month_bytes gauge")
+        for at in acc_totals:
+            acc_name = at["account"]
+            lines.append(f'imap_spam_account_month_bytes{{account="{acc_name}"}} {at.get("bytes_month", 0)}')
 
     return "\n".join(lines) + "\n", 200, {"Content-Type": "text/plain; version=0.0.4"}
 
