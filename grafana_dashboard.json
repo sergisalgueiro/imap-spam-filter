@@ -820,22 +820,22 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum by (account) (imap_spam_account_wire_month_bytes{account=~\"$account\"}) or sum by (account) (imap_spam_account_month_bytes{account=~\"$account\"})",
+          "expr": "sum by (account) (imap_spam_account_month_bytes{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
-          "refId": "TrafficMonth"
+          "refId": "EmailsMonth"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum by (account) (imap_spam_account_wire_bytes_total{account=~\"$account\"}) or sum by (account) (imap_spam_account_processed_bytes_total{account=~\"$account\"})",
+          "expr": "sum by (account) (imap_spam_account_wire_month_bytes{account=~\"$account\"})",
           "format": "table",
           "instant": true,
           "legendFormat": "",
-          "refId": "TrafficTotal"
+          "refId": "TrafficMonth"
         }
       ],
       "transformations": [
@@ -860,8 +860,8 @@
               "Value #Rescued": "Rescatats",
               "Value #Reported": "Reportats",
               "Value #Purged": "Purgats",
-              "Value #TrafficMonth": "Tràfic (mes)",
-              "Value #TrafficTotal": "Tràfic (total)"
+              "Value #EmailsMonth": "Correus (mes)",
+              "Value #TrafficMonth": "Tràfic Plesk (mes)"
             }
           }
         }
@@ -872,7 +872,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Tràfic (mes)"
+              "options": "Correus (mes)"
             },
             "properties": [
               {
@@ -884,7 +884,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Tràfic (total)"
+              "options": "Tràfic Plesk (mes)"
             },
             "properties": [
               {
@@ -897,7 +897,7 @@
       }
     },
     {
-      "title": "Tràfic Real Plesk (mes)",
+      "title": "Correus (mes)",
       "type": "stat",
       "id": 14,
       "datasource": {
@@ -906,7 +906,7 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 4,
+        "w": 3,
         "x": 17,
         "y": 0
       },
@@ -916,7 +916,55 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(imap_spam_account_wire_month_bytes{account=~\"$account\"}) or sum(imap_spam_account_month_bytes{account=~\"$account\"}) or vector(0)",
+          "expr": "sum(imap_spam_account_month_bytes{account=~\"$account\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "Correus mes",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3b82f6"
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        }
+      }
+    },
+    {
+      "title": "Tràfic Real Plesk (mes)",
+      "type": "stat",
+      "id": 15,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fe6xf8o67yuwwa"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fe6xf8o67yuwwa"
+          },
+          "expr": "sum(imap_spam_account_wire_month_bytes{account=~\"$account\"}) or vector(0)",
+          "instant": true,
           "legendFormat": "Tràfic mes",
           "refId": "A"
         }
@@ -959,53 +1007,7 @@
       }
     },
     {
-      "title": "Tràfic Real Plesk (total)",
-      "type": "stat",
-      "id": 15,
-      "datasource": {
-        "type": "prometheus",
-        "uid": "fe6xf8o67yuwwa"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 3,
-        "x": 21,
-        "y": 0
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "fe6xf8o67yuwwa"
-          },
-          "expr": "sum(imap_spam_account_wire_bytes_total{account=~\"$account\"}) or sum(imap_spam_account_processed_bytes_total{account=~\"$account\"}) or vector(0)",
-          "legendFormat": "Total",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "#3b82f6"
-          }
-        }
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "values": false
-        }
-      }
-    },
-    {
-      "title": "Evolució del Tràfic Escanejat (per hora)",
+      "title": "Evolució del Tràfic: Correus vs Xarxa Plesk (per hora)",
       "type": "timeseries",
       "id": 16,
       "datasource": {
@@ -1024,9 +1026,18 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum by (account) (increase(imap_spam_account_wire_bytes_total{account=~\"$account\"}[1h])) or sum by (account) (increase(imap_spam_account_processed_bytes_total{account=~\"$account\"}[1h]))",
-          "legendFormat": "{{account}}",
+          "expr": "sum(increase(imap_spam_account_processed_bytes_total{account=~\"$account\"}[1h])) or vector(0)",
+          "legendFormat": "Volum correus (net)",
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fe6xf8o67yuwwa"
+          },
+          "expr": "sum(increase(imap_spam_account_wire_bytes_total{account=~\"$account\"}[1h])) or vector(0)",
+          "legendFormat": "Tràfic real consumit Plesk (brut)",
+          "refId": "B"
         }
       ],
       "fieldConfig": {
@@ -1038,12 +1049,11 @@
             "lineWidth": 1,
             "fillOpacity": 60,
             "gradientMode": "none",
-            "spanNulls": false,
+            "spanNulls": true,
             "showPoints": "auto",
             "pointSize": 5,
             "stacking": {
-              "mode": "normal",
-              "group": "A"
+              "mode": "none"
             },
             "axisPlacement": "auto"
           },
@@ -1134,5 +1144,5 @@
   "timezone": "browser",
   "title": "IMAP Spam Filter",
   "uid": "imap-spam-filter",
-  "version": 1
+  "version": 10
 }
