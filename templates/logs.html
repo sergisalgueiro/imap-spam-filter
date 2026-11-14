@@ -76,6 +76,7 @@
         <a href="/emails?filter=spam{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'spam' %}active{% endif %}">Spam filtrat ({{ count_spam }})</a>
         <a href="/emails?filter=ham{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'ham' %}active{% endif %}">Legítims ({{ count_ham }})</a>
         <a href="/emails?filter=rescued{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'rescued' %}active{% endif %}">Rescatats ({{ count_rescued }})</a>
+        <a href="/emails?filter=reported{% if current_account %}&account={{ current_account }}{% endif %}" class="{% if active_tab == 'reported' %}active{% endif %}">Reportats ({{ count_reported }})</a>
         <a href="/logs{% if current_account %}?account={{ current_account }}{% endif %}" class="{% if active_tab == 'logs' %}active{% endif %}">Logs</a>
     </nav>
 
