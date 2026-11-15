@@ -1026,8 +1026,8 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(increase(imap_spam_account_processed_bytes_total{account=~\"$account\"}[1h])) or vector(0)",
-          "legendFormat": "Volum correus (net)",
+          "expr": "sum(increase(imap_spam_account_wire_bytes_total{account=~\"$account\"}[1h])) or vector(0)",
+          "legendFormat": "Tràfic real consumit Plesk (brut)",
           "refId": "A"
         },
         {
@@ -1035,33 +1035,87 @@
             "type": "prometheus",
             "uid": "fe6xf8o67yuwwa"
           },
-          "expr": "sum(increase(imap_spam_account_wire_bytes_total{account=~\"$account\"}[1h])) or vector(0)",
-          "legendFormat": "Tràfic real consumit Plesk (brut)",
+          "expr": "sum(increase(imap_spam_account_processed_bytes_total{account=~\"$account\"}[1h])) or vector(0)",
+          "legendFormat": "Volum correus (net)",
           "refId": "B"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "drawStyle": "bars",
-            "lineInterpolation": "linear",
-            "barAlignment": 0,
-            "lineWidth": 1,
-            "fillOpacity": 60,
-            "gradientMode": "none",
-            "spanNulls": true,
-            "showPoints": "auto",
-            "pointSize": 5,
-            "stacking": {
-              "mode": "none"
-            },
-            "axisPlacement": "auto"
+            "axisPlacement": "auto",
+            "spanNulls": true
           },
-          "unit": "bytes",
-          "color": {
-            "mode": "palette-classic"
+          "unit": "bytes"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tràfic real consumit Plesk (brut)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 35
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#f59e0b",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Volum correus (net)"
+            },
+            "properties": [
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 3
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "smooth"
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 15
+              },
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#22c55e",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
-        }
+        ]
       },
       "options": {
         "tooltip": {
@@ -1142,5 +1196,5 @@
   "timezone": "browser",
   "title": "IMAP Spam Filter",
   "uid": "imap-spam-filter",
-  "version": 11
+  "version": 12
 }
