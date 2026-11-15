@@ -1071,9 +1071,7 @@
         "legend": {
           "displayMode": "list",
           "placement": "bottom",
-          "calcs": [
-            "sum"
-          ]
+          "calcs": []
         }
       }
     }
@@ -1144,5 +1142,5 @@
   "timezone": "browser",
   "title": "IMAP Spam Filter",
   "uid": "imap-spam-filter",
-  "version": 10
+  "version": 11
 }
