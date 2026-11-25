@@ -299,6 +299,8 @@ class Database:
                         reported        INTEGER DEFAULT 0,
                         learned_spam    INTEGER DEFAULT 0,
                         learned_ham     INTEGER DEFAULT 0,
+                        bytes_rx        INTEGER DEFAULT 0,
+                        bytes_tx        INTEGER DEFAULT 0,
                         PRIMARY KEY (date, account)
                     );
                     CREATE TABLE IF NOT EXISTS events (
@@ -1510,10 +1512,28 @@ class AccountWorker(threading.Thread):
 class IMAPBridge:
     def __init__(self):
         self.db = Database(DB_PATH)
+        self.heartbeat_file = os.environ.get(
+            "BRIDGE_HEARTBEAT_FILE",
+            os.path.join(os.path.dirname(self.db.path), "bridge.heartbeat"),
+        )
         self.stop_event = threading.Event()
         self.workers: List[AccountWorker] = []
         signal.signal(signal.SIGTERM, self._stop)
         signal.signal(signal.SIGINT, self._stop)
+
+    def _touch_heartbeat(self):
+        try:
+            with open(self.heartbeat_file, "w") as f:
+                f.write(f"{int(time.time())}:{len(self.workers)}\n")
+        except OSError as e:
+            logger.debug(f"No s'ha pogut actualitzar el heartbeat: {e}")
+
+    def _clear_heartbeat(self):
+        try:
+            if os.path.exists(self.heartbeat_file):
+                os.remove(self.heartbeat_file)
+        except OSError:
+            pass
 
     def _stop(self, *_):
         logger.info("Senyal d'aturada rebut. Aturant tots els comptes...")
@@ -1530,7 +1550,7 @@ class IMAPBridge:
         while not accounts and not self.stop_event.is_set():
             logger.warning("=" * 60)
             logger.warning("⚠️  CONFIGURACIÓ PENDENT:")
-            logger.warning("Edita el fitxer /opt/imap-spam-filter/.env amb les credencials dels comptes:")
+            logger.warning(f"Configura les credencials dels comptes (variables d'entorn o {ENV_PATH}):")
             logger.warning("ACCOUNT_1_USER=..., ACCOUNT_1_PASS=..., ACCOUNT_2_USER=..., etc.")
             logger.warning("=" * 60)
             self.db.event("WARNING", "Falta configurar credencials de comptes a .env")
@@ -1550,8 +1570,13 @@ class IMAPBridge:
             w.start()
             self.workers.append(w)
 
+        last_hb = 0.0
         # Bucle de supervisió del procés principal
         while not self.stop_event.is_set():
+            now = time.time()
+            if now - last_hb >= 15:
+                self._touch_heartbeat()
+                last_hb = now
             for i, w in enumerate(list(self.workers)):
                 if not w.is_alive() and not self.stop_event.is_set():
                     logger.warning(f"Worker [{w.user}] ha finalitzat inesperadament. Reiniciant fil...")
@@ -1564,6 +1589,7 @@ class IMAPBridge:
         for w in self.workers:
             w.join(timeout=10)
 
+        self._clear_heartbeat()
         self.db.event("INFO", "Servei aturat")
         logger.info("Servei aturat completament")
 

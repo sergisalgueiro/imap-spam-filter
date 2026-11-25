@@ -1,0 +1,84 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: imap-spam-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "900", "1", "--save", "300", "10", "--save", "60", "10000"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  rspamd:
+    image: rspamd/rspamd:latest
+    container_name: imap-spam-rspamd
+    restart: unless-stopped
+    volumes:
+      - ./docker/rspamd/local.d:/etc/rspamd/local.d:ro
+      - rspamd_data:/var/lib/rspamd
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "rspamc stat >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  imap-spam-filter:
+    build: .
+    image: imap-spam-filter:local
+    container_name: imap-spam-filter
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - RSPAMD_URL=http://rspamd:11333
+      - RSPAMD_CONTROLLER_URL=http://rspamd:11334
+      - DB_PATH=/app/data/spam_filter.db
+      - LOG_DIR=/app/data
+      - TZ=Europe/Madrid
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      rspamd:
+        condition: service_healthy
+
+  imap-spam-dashboard:
+    build: .
+    image: imap-spam-filter:local
+    container_name: imap-spam-dashboard
+    command: ["python3", "dashboard.py"]
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - RSPAMD_URL=http://rspamd:11333
+      - RSPAMD_CONTROLLER_URL=http://rspamd:11334
+      - DB_PATH=/app/data/spam_filter.db
+      - LOG_DIR=/app/data
+      - TZ=Europe/Madrid
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "${DASHBOARD_PORT:-8025}:8025"
+    depends_on:
+      rspamd:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8025/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  redis_data:
+  rspamd_data:

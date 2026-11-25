@@ -9,11 +9,14 @@ Exposa endpoint /metrics per a Prometheus amb etiquetes de compte.
 import os
 import sys
 import json
+import time
+import shutil
 import imaplib
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
+import requests
 from flask import Flask, render_template, jsonify, request, redirect, url_for
 try:
     from dotenv import load_dotenv
@@ -47,6 +50,7 @@ from imap_bridge import (
     IMAP_SSL,
     FOLDER_SPAM_DEST,
     FOLDER_INBOX,
+    RSPAMD_URL,
     SPAM_RETENTION_DAYS,
     rspamd_learn,
     load_accounts,
@@ -61,6 +65,11 @@ if not os.path.exists(templates_dir):
 
 app = Flask(__name__, template_folder=templates_dir)
 db = Database(DB_PATH)
+BRIDGE_HEARTBEAT_FILE = os.environ.get(
+    "BRIDGE_HEARTBEAT_FILE",
+    os.path.join(os.path.dirname(db.path), "bridge.heartbeat"),
+)
+BRIDGE_HEARTBEAT_TTL = int(os.environ.get("BRIDGE_HEARTBEAT_TTL", "90"))
 
 
 @app.context_processor
@@ -333,16 +342,23 @@ def api_stats():
 @app.route("/api/health")
 def api_health():
     """Health check per monitoritzar el servei."""
-    try:
-        sa = subprocess.run(["systemctl", "is-active", "imap-spam-filter"],
-                            capture_output=True, text=True, timeout=5)
-        bridge_status = sa.stdout.strip()
-    except Exception:
-        bridge_status = "unknown"
+    bridge_status = "unknown"
+    if os.path.exists(BRIDGE_HEARTBEAT_FILE):
+        try:
+            age = time.time() - os.path.getmtime(BRIDGE_HEARTBEAT_FILE)
+            bridge_status = "active" if age <= BRIDGE_HEARTBEAT_TTL else "down"
+        except OSError:
+            bridge_status = "unknown"
+    elif shutil.which("systemctl"):
+        try:
+            sa = subprocess.run(["systemctl", "is-active", "imap-spam-filter"],
+                                capture_output=True, text=True, timeout=5)
+            bridge_status = sa.stdout.strip() or "unknown"
+        except Exception:
+            bridge_status = "unknown"
 
     try:
-        import requests
-        r = requests.get("http://localhost:11333/ping", timeout=3)
+        r = requests.get(f"{RSPAMD_URL.rstrip('/')}/ping", timeout=3)
         rspamd_status = "active" if r.status_code == 200 else "error"
     except Exception:
         rspamd_status = "down"

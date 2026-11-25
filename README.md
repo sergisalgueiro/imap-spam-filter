@@ -174,6 +174,26 @@ sudo journalctl -u imap-spam-filter -f
 
 ---
 
+## 🐳 Desplegament amb Docker Compose
+
+El repositori inclou `Dockerfile`, `docker-compose.yml` i la configuració de Rspamd (`docker/rspamd/local.d/`) per executar tot l'stack (`redis`, `rspamd`, `imap-spam-filter` i `imap-spam-dashboard`) en contenidors:
+
+```bash
+# 1. Prepara el fitxer de configuració i la carpeta de dades
+cp .env.example .env
+mkdir -p data
+# Edita .env amb les credencials IMAP (en Docker, RSPAMD_URL i DB_PATH ja es sobreescriuen al Compose)
+
+# 2. Construeix i arrenca tots els serveis
+docker compose up -d --build
+
+# 3. Comprova l'estat i els logs
+docker compose ps
+docker compose logs -f imap-spam-filter
+```
+
+---
+
 ## 🌐 Dashboard Web i Mètriques
 
 * **Panell de Control**: `http://<ip-del-servidor>:8025/`
